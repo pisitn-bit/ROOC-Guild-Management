@@ -1,0 +1,6 @@
+{
+  "name": "Ragnarok Origin Guild Manager",
+  "description": "ระบบประมูลไอเทมกิลด์ลีกและ OverRun สุ่มรางวัลด้วยวงล้อ และแดชบอร์ดแสดงผลเรียลไทม์ พร้อมแจ้งเตือน Discord",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
