@@ -1,6 +1,10 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import express from "express";
 import path from "path";
 import fs from "fs";
+import { createServer as createViteServer } from "vite";
 import { GuildState, Member } from "./src/types";
 import { initializeApp, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
@@ -105,19 +109,19 @@ const SERVICE_ACCOUNT_FILE = path.join(process.cwd(), "firebase-service-account.
 let db: any = null;
 
 try {
-  if (fs.existsSync(SERVICE_ACCOUNT_FILE)) {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    initializeApp({
+      credential: cert(serviceAccount)
+    });
+    console.log("Firebase Admin initialized successfully using process.env.FIREBASE_SERVICE_ACCOUNT.");
+    db = getFirestore();
+  } else if (fs.existsSync(SERVICE_ACCOUNT_FILE)) {
     const serviceAccount = JSON.parse(fs.readFileSync(SERVICE_ACCOUNT_FILE, "utf-8"));
     initializeApp({
       credential: cert(serviceAccount)
     });
     console.log("Firebase Admin initialized successfully using service account file.");
-    db = getFirestore();
-  } else if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-    initializeApp({
-      credential: cert(serviceAccount)
-    });
-    console.log("Firebase Admin initialized successfully using FIREBASE_SERVICE_ACCOUNT env var.");
     db = getFirestore();
   } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.K_SERVICE || process.env.GOOGLE_CLOUD_PROJECT) {
     // If running in Google Cloud or environment with default credentials
@@ -127,7 +131,7 @@ try {
     console.log("Firebase Admin initialized with project ID: rooc-guild-management-c360c");
     db = getFirestore();
   } else {
-    console.warn("⚠️ [Warning]: firebase-service-account.json not found and no credentials detected. Firestore is disabled; falling back to local file storage.");
+    console.warn("⚠️ [Warning]: Firebase service account not found in env or file. Firestore is disabled; falling back to local file storage.");
   }
 } catch (error) {
   console.error("Failed to initialize Firebase Admin:", error);
@@ -320,10 +324,25 @@ function saveLocalBackup() {
   }
 }
 
-// Load initial state at startup
-loadStateFromFirestore().catch(console.error);
-
 const app = express();
+
+// Lazy database state initialization (essential for Serverless environment like Vercel)
+let initPromise: Promise<GuildState> | null = null;
+app.use(async (req, res, next) => {
+  if (!initPromise) {
+    initPromise = loadStateFromFirestore().catch((err) => {
+      console.error("Database state initialization failed:", err);
+      initPromise = null; // Reset to allow retry on next request
+      throw err;
+    });
+  }
+  try {
+    await initPromise;
+  } catch (err) {
+    return res.status(500).json({ success: false, error: "Database initialization failed" });
+  }
+  next();
+});
 
 // Middleware
 app.use(express.json());
@@ -801,29 +820,27 @@ app.use(express.json());
     }
   });
 
-  // Vite middleware for development / Static serving / Local listen
-  if (!process.env.VERCEL) {
-    (async () => {
-      if (process.env.NODE_ENV !== "production") {
-        const { createServer: createViteServer } = await import("vite");
-        const vite = await createViteServer({
-          server: { middlewareMode: true },
-          appType: "spa",
-        });
-        app.use(vite.middlewares);
-      } else {
-        const distPath = path.join(process.cwd(), "dist");
-        app.use(express.static(distPath));
-        app.get("*", (req, res) => {
-          res.sendFile(path.join(distPath, "index.html"));
-        });
-      }
+// Vite middleware for development
+if (process.env.NODE_ENV !== "production") {
+  const vite = await createViteServer({
+    server: { middlewareMode: true },
+    appType: "spa",
+  });
+  app.use(vite.middlewares);
+} else if (!process.env.VERCEL) {
+  const distPath = path.join(process.cwd(), "dist");
+  app.use(express.static(distPath));
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(distPath, "index.html"));
+  });
+}
 
-      const PORT = Number(process.env.PORT) || 3000;
-      app.listen(PORT, "0.0.0.0", () => {
-        console.log(`Server running on port ${PORT}`);
-      });
-    })().catch(console.error);
-  }
+// Start local listener if not running in a Serverless environment like Vercel
+if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
+  const PORT = process.env.PORT || 3000;
+  app.listen(Number(PORT), "0.0.0.0", () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
 
-  export default app;
+export default app;
