@@ -821,12 +821,16 @@ app.use(express.json());
 
 // Vite middleware for development
 if (process.env.NODE_ENV !== "production") {
-  const { createServer } = await import("vite");
-  const vite = await createServer({
-    server: { middlewareMode: true },
-    appType: "spa",
+  (async () => {
+    const { createServer } = await import("vite");
+    const vite = await createServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  })().catch(err => {
+    console.error("Failed to initialize Vite development server:", err);
   });
-  app.use(vite.middlewares);
 } else if (!process.env.VERCEL) {
   const distPath = path.join(process.cwd(), "dist");
   app.use(express.static(distPath));
