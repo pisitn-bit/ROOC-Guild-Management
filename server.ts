@@ -337,8 +337,13 @@ app.use(async (req, res, next) => {
   }
   try {
     await initPromise;
-  } catch (err) {
-    return res.status(500).json({ success: false, error: "Database initialization failed" });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: "Database initialization failed",
+      message: err?.message || String(err),
+      stack: err?.stack
+    });
   }
   next();
 });
@@ -818,6 +823,17 @@ app.use(express.json());
       });
     }
   });
+
+// Global error handler middleware to catch and print production errors
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error("Global Express Error:", err);
+  res.status(500).json({
+    success: false,
+    error: "Internal Server Error",
+    message: err?.message || String(err),
+    stack: err?.stack
+  });
+});
 
 // Vite middleware for development
 if (process.env.NODE_ENV !== "production") {
