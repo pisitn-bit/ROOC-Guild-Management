@@ -5,7 +5,7 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import { GuildState, Member } from "./src/types";
-import { initializeApp, cert } from "firebase-admin/app";
+import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
 // Setup state filepath
@@ -108,29 +108,32 @@ const SERVICE_ACCOUNT_FILE = path.join(process.cwd(), "firebase-service-account.
 let db: any = null;
 
 try {
-  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-    initializeApp({
-      credential: cert(serviceAccount)
-    });
-    console.log("Firebase Admin initialized successfully using process.env.FIREBASE_SERVICE_ACCOUNT.");
+  if (getApps().length === 0) {
+    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+      initializeApp({
+        credential: cert(serviceAccount)
+      });
+      console.log("Firebase Admin initialized successfully using process.env.FIREBASE_SERVICE_ACCOUNT.");
+    } else if (fs.existsSync(SERVICE_ACCOUNT_FILE)) {
+      const serviceAccount = JSON.parse(fs.readFileSync(SERVICE_ACCOUNT_FILE, "utf-8"));
+      initializeApp({
+        credential: cert(serviceAccount)
+      });
+      console.log("Firebase Admin initialized successfully using service account file.");
+    } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.K_SERVICE || process.env.GOOGLE_CLOUD_PROJECT) {
+      // If running in Google Cloud or environment with default credentials
+      initializeApp({
+        projectId: "rooc-guild-management-c360c"
+      });
+      console.log("Firebase Admin initialized with project ID: rooc-guild-management-c360c");
+    } else {
+      console.warn("⚠️ [Warning]: Firebase service account not found in env or file. Firestore is disabled; falling back to local file storage.");
+    }
+  }
+
+  if (getApps().length > 0) {
     db = getFirestore();
-  } else if (fs.existsSync(SERVICE_ACCOUNT_FILE)) {
-    const serviceAccount = JSON.parse(fs.readFileSync(SERVICE_ACCOUNT_FILE, "utf-8"));
-    initializeApp({
-      credential: cert(serviceAccount)
-    });
-    console.log("Firebase Admin initialized successfully using service account file.");
-    db = getFirestore();
-  } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.K_SERVICE || process.env.GOOGLE_CLOUD_PROJECT) {
-    // If running in Google Cloud or environment with default credentials
-    initializeApp({
-      projectId: "rooc-guild-management-c360c"
-    });
-    console.log("Firebase Admin initialized with project ID: rooc-guild-management-c360c");
-    db = getFirestore();
-  } else {
-    console.warn("⚠️ [Warning]: Firebase service account not found in env or file. Firestore is disabled; falling back to local file storage.");
   }
 } catch (error) {
   console.error("Failed to initialize Firebase Admin:", error);
@@ -838,7 +841,8 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 // Vite middleware for development
 if (process.env.NODE_ENV !== "production") {
   (async () => {
-    const { createServer } = await import("vite");
+    const viteModuleName = "vite";
+    const { createServer } = await import(viteModuleName);
     const vite = await createServer({
       server: { middlewareMode: true },
       appType: "spa",
