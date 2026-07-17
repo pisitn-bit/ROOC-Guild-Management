@@ -4,7 +4,6 @@ dotenv.config();
 import express from "express";
 import path from "path";
 import fs from "fs";
-import { createServer as createViteServer } from "vite";
 import { GuildState, Member } from "./src/types";
 import { initializeApp, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
@@ -822,7 +821,8 @@ app.use(express.json());
 
 // Vite middleware for development
 if (process.env.NODE_ENV !== "production") {
-  const vite = await createViteServer({
+  const { createServer } = await import("vite");
+  const vite = await createServer({
     server: { middlewareMode: true },
     appType: "spa",
   });
