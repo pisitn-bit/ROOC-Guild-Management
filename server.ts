@@ -4,7 +4,7 @@ dotenv.config();
 import express from "express";
 import path from "path";
 import fs from "fs";
-import { GuildState, Member } from "./src/types";
+import { GuildState, Member } from "./src/types.js";
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
