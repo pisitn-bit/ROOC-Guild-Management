@@ -202,18 +202,39 @@ export default function SpinWheel({
     }
   }, [selectedEventId, events, members]);
 
+  // Helper to count how many items a member has been assigned in the selected event (or cycle)
+  const getAssignedCount = (memberId: string) => {
+    if (selectedEventId === 'all') {
+      const member = members.find(m => m.id === memberId);
+      return member?.hasReceivedInCycle ? 1 : 0;
+    }
+    const currentEvent = events.find(e => e.id === selectedEventId);
+    if (!currentEvent) return 0;
+    return (currentEvent.drops || []).filter(d => d.assignedToMemberId === memberId).length;
+  };
+
+  // Find minimum assigned count among selected participants to determine eligibility
+  const eligibleAssignedCount = (() => {
+    const selectedParticipants = members.filter(m => participants.includes(m.id));
+    if (selectedParticipants.length === 0) return 0;
+    const counts = selectedParticipants.map(m => getAssignedCount(m.id));
+    return Math.min(...counts);
+  })();
+
   // Active member structures representing the slices
   const activeParticipants = members.filter(m => {
     const isMatched = participants.includes(m.id);
     if (!isMatched) return false;
-    if (excludeReceived && m.hasReceivedInCycle) return false;
+    if (excludeReceived) {
+      return getAssignedCount(m.id) === eligibleAssignedCount;
+    }
     return true;
   });
 
-  // Redraw Wheel whenever participants or angles change
+  // Redraw Wheel whenever participants, members, events or settings change
   useEffect(() => {
     drawWheel();
-  }, [participants, members, selectedEventId]);
+  }, [participants, members, selectedEventId, events, excludeReceived]);
 
   // Color palette for professional RPG-style wheel slices
   const sliceColors = [
@@ -384,7 +405,45 @@ export default function SpinWheel({
   const handleSaveWheelWinner = () => {
     if (!wheelWinner) return;
 
-    const prizeNameStr = customPrizeName || 'รางวัลสุ่มวงล้อ';
+    let prizeNameStr = customPrizeName || 'รางวัลสุ่มวงล้อ';
+    let updatedEvents = [...events];
+    let updatedMembers = [...members];
+
+    if (selectedEventId !== 'all') {
+      const currentSelectedEvent = events.find(e => e.id === selectedEventId);
+      const unassignedDrop = currentSelectedEvent?.drops?.find(d => !d.assignedToMemberId);
+      
+      if (currentSelectedEvent && unassignedDrop) {
+        prizeNameStr = `ไอเทม: ${unassignedDrop.itemName}`;
+        
+        // Update the drop in the event
+        updatedEvents = events.map(ev => {
+          if (ev.id === selectedEventId) {
+            return {
+              ...ev,
+              drops: ev.drops.map(d => d.id === unassignedDrop.id ? {
+                ...d,
+                assignedToMemberId: wheelWinner.id,
+                assignedToMemberName: wheelWinner.name
+              } : d)
+            };
+          }
+          return ev;
+        });
+
+        // Mark the member as received in cycle
+        updatedMembers = members.map(m => m.id === wheelWinner.id ? {
+          ...m,
+          hasReceivedInCycle: true
+        } : m);
+      }
+    } else {
+      // If no event, just mark hasReceivedInCycle
+      updatedMembers = members.map(m => m.id === wheelWinner.id ? {
+        ...m,
+        hasReceivedInCycle: true
+      } : m);
+    }
 
     const newResult: RaffleResult = {
       id: `ref-${Date.now()}`,
@@ -396,7 +455,9 @@ export default function SpinWheel({
 
     onUpdateState({
       ...state,
+      members: updatedMembers,
       raffleResults: [newResult, ...raffleResults],
+      events: updatedEvents
     });
 
     // Notify Discord
@@ -944,65 +1005,20 @@ export default function SpinWheel({
               {/* Blue glowing ambient ring */}
               <div className="absolute inset-0 bg-gradient-to-b from-blue-500/5 to-transparent pointer-events-none"></div>
 
-              {/* Active Prize Selector for the Wheel */}
-              <div className="w-full max-w-xs text-center space-y-2.5 z-10">
-                <label className="text-xs font-black text-slate-400 block uppercase tracking-widest text-center">🎁 ของรางวัล/สิทธิ์ดรอปในการหมุนรอบนี้:</label>
-                
-                {(() => {
-                  const currentSelectedEvent = events.find(e => e.id === selectedEventId);
-                  const hasDrops = currentSelectedEvent && currentSelectedEvent.drops?.length > 0;
-
-                  return (
-                    <div className="space-y-1.5">
-                      {hasDrops ? (
-                        <select
-                          value={customPrizeName}
-                          onChange={e => setCustomPrizeName(e.target.value)}
-                          className="w-full bg-slate-950 text-slate-200 px-3 py-2 rounded-xl border border-slate-800 focus:border-blue-500 focus:outline-none text-xs text-center font-bold text-yellow-500"
-                        >
-                          <option value="สิทธิ์เลือกของประมูล (Priority Choice)">👑 สิทธิ์เลือกของประมูล (Priority Choice)</option>
-                          {currentSelectedEvent.drops.map(d => (
-                            <option key={d.id} value={`ไอเทม: ${d.itemName} x1 ชิ้น`}>
-                              🎮 {d.itemName} (ในรอบกิจกรรม)
-                            </option>
-                          ))}
-                          <option value="custom_input">✍️ กรอกของรางวัลอื่น ๆ เอง...</option>
-                        </select>
-                      ) : (
-                        <select
-                          value={customPrizeName === 'custom_input' ? 'custom_input' : 'general'}
-                          onChange={e => {
-                            if (e.target.value === 'general') {
-                              setCustomPrizeName('สิทธิ์เลือกของประมูล (Priority Choice)');
-                            } else {
-                              setCustomPrizeName('custom_input');
-                            }
-                          }}
-                          className="w-full bg-slate-950 text-slate-200 px-3 py-2 rounded-xl border border-slate-800 focus:border-blue-500 focus:outline-none text-xs text-center font-bold text-yellow-500"
-                        >
-                          <option value="general">👑 สิทธิ์เลือกของประมูล (Priority Choice)</option>
-                          <option value="custom_input">✍️ กรอกของรางวัลอื่น ๆ เอง...</option>
-                        </select>
-                      )}
-
-                      {/* If custom_input is chosen (or not matching other options), show manual text input */}
-                      {(customPrizeName === 'custom_input' || 
-                        (!['สิทธิ์เลือกของประมูล (Priority Choice)', 'custom_input'].includes(customPrizeName) && 
-                         !(currentSelectedEvent?.drops?.some(d => `ไอเทม: ${d.itemName} x1 ชิ้น` === customPrizeName))
-                        )
-                      ) && (
-                        <input
-                          type="text"
-                          placeholder="พิมพ์ระบุของรางวัล เช่น ขนนกแดง, Oridecon Box"
-                          value={customPrizeName === 'custom_input' ? '' : customPrizeName}
-                          onChange={e => setCustomPrizeName(e.target.value)}
-                          className="w-full bg-slate-950 text-slate-200 px-3 py-2 rounded-xl border border-slate-800 focus:border-blue-500 focus:outline-none text-xs text-center font-bold text-slate-300"
-                        />
-                      )}
-                    </div>
-                  );
-                })()}
-              </div>
+                            {/* Active Prize Info Banner (Replaced prize selector with clean display of next target item) */}
+              {selectedEventId !== 'all' && (() => {
+                const currentSelectedEvent = events.find(e => e.id === selectedEventId);
+                const unassignedDrop = currentSelectedEvent?.drops?.find(d => !d.assignedToMemberId);
+                if (!unassignedDrop) return null;
+                return (
+                  <div className="w-full max-w-xs text-center p-3 bg-blue-950/20 border border-blue-500/25 rounded-2xl z-10 animate-fade-in">
+                    <span className="text-[10px] text-blue-400 font-extrabold uppercase tracking-widest block mb-1">🎁 ไอเทมถัดไปที่จะได้รับการจับสปินสุ่ม:</span>
+                    <strong className="text-yellow-500 text-sm font-extrabold flex items-center justify-center gap-1">
+                      🎮 {unassignedDrop.itemName} (x1 ชิ้น)
+                    </strong>
+                  </div>
+                );
+              })()}
 
               {/* Interactive Wheel & Pin container */}
               <div className="relative p-2 bg-slate-950 rounded-full border-4 border-slate-800/80 shadow-[0_0_35px_rgba(59,130,246,0.15)]">
@@ -1022,17 +1038,36 @@ export default function SpinWheel({
               </div>
 
               {/* Trigger Button */}
-              <div className="w-full max-w-xs space-y-3 z-10">
-                <button
-                  onClick={spinWheel}
-                  disabled={isSpinning || activeParticipants.length === 0}
-                  className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black py-4 rounded-xl text-xs transition-all duration-300 disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center gap-1.5 shadow-lg shadow-blue-500/20 uppercase tracking-widest font-mono"
-                  id="spin-wheel-btn"
-                >
-                  <Play className="w-4 h-4 fill-white shrink-0" />
-                  {isSpinning ? 'วงล้อทองคำกำลังหมุน...' : 'กดปุ่มสปินวงล้อนำโชค!'}
-                </button>
-              </div>
+              {(() => {
+                const currentEvent = selectedEventId === 'all' ? null : events.find(e => e.id === selectedEventId);
+                const totalDrops = currentEvent?.drops?.length || 0;
+                const unassignedDropsCount = currentEvent?.drops?.filter(d => !d.assignedToMemberId).length || 0;
+                const isEventOutofStock = selectedEventId !== 'all' && totalDrops > 0 && unassignedDropsCount === 0;
+                const noDropsAvailable = selectedEventId !== 'all' && totalDrops === 0;
+
+                return (
+                  <div className="w-full max-w-xs space-y-3 z-10">
+                    <button
+                      onClick={spinWheel}
+                      disabled={isSpinning || activeParticipants.length === 0 || isEventOutofStock || noDropsAvailable}
+                      className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black py-4 rounded-xl text-xs transition-all duration-300 disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center gap-1.5 shadow-lg shadow-blue-500/20 uppercase tracking-widest font-mono"
+                      id="spin-wheel-btn"
+                    >
+                      <Play className="w-4 h-4 fill-white shrink-0" />
+                      {isSpinning 
+                        ? 'วงล้อทองคำกำลังหมุน...' 
+                        : isEventOutofStock 
+                          ? 'ของหมดแล้ว! (Out of Stock)' 
+                          : noDropsAvailable 
+                            ? 'ไม่มีไอเทมดรอปในกิจกรรมนี้' 
+                            : activeParticipants.length === 0 
+                              ? 'ไม่มีผู้มีสิทธิ์ลุ้นรางวัล' 
+                              : 'กดปุ่มสปินวงล้อนำโชค!'
+                      }
+                    </button>
+                  </div>
+                );
+              })()}
 
               {/* Winner presentation block */}
               {wheelWinner && (

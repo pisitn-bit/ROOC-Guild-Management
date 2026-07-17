@@ -4,7 +4,7 @@ dotenv.config();
 import express from "express";
 import path from "path";
 import fs from "fs";
-import { GuildState, Member } from "./src/types.js";
+import { GuildState, Member, DEFAULT_JOB_CLASSES } from "./src/types.js";
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
@@ -153,6 +153,9 @@ function loadLocalState(): GuildState {
       if (localState.guildGuidelines === undefined) {
         localState.guildGuidelines = "1. เข้าร่วมกิลด์วอทุกวันอังคารและเสาร์ เวลา 20.00 - 22.00 น. กรุณามาสแตนด์บายก่อนเวลา 15 นาที\n2. ลงทะเบียนเข้าร่วมกิจกรรมหรือแจ้งลาล่วงหน้าในระบบทุกครั้งก่อนกิจกรรมเริ่ม 1 ชั่วโมง\n3. การจัดสรรไอเทมดรอปจะใช้ระบบคิววนรอบ (Cycle Allocation) และแต้มสงครามเพื่อความโปร่งใสและเป็นธรรมที่สุด\n4. ห้ามลักลอบหรือแอบดีลไอเทมกิจกรรมโดยไม่ผ่านการจัดสรรจากผู้ดูแลระบบ\n5. สมาชิกทุกคนต้องมีส่วนร่วมในการช่วยเหลือเพื่อนร่วมกิลด์ และร่วมกิจกรรมต่าง ๆ ด้วยความเคารพซึ่งกันและกัน";
       }
+      if (!localState.jobClasses) {
+        localState.jobClasses = DEFAULT_JOB_CLASSES;
+      }
       return localState;
     }
   } catch (e) {
@@ -179,6 +182,17 @@ async function loadStateFromFirestore(): Promise<GuildState> {
 
       const settingsDoc = await db.collection("config").doc("settings").get();
       const settingsData = settingsDoc.exists ? settingsDoc.data() : {};
+
+      // Load jobClasses from masterData/jobClasses
+      const jobClassesDoc = await db.collection("masterData").doc("jobClasses").get();
+      let jobClasses: string[] = [];
+      if (jobClassesDoc.exists) {
+        jobClasses = jobClassesDoc.data()?.classes || [];
+      } else {
+        // Seed if missing
+        jobClasses = DEFAULT_JOB_CLASSES;
+        await db.collection("masterData").doc("jobClasses").set({ classes: jobClasses });
+      }
       
       // Load masterItems
       const itemsSnap = await db.collection("masterItems").get();
@@ -207,6 +221,7 @@ async function loadStateFromFirestore(): Promise<GuildState> {
         adminPIN: settingsData.adminPIN || "ro-admin-5678",
         guildGuidelines: settingsData.guildGuidelines || "",
         guildName: settingsData.guildName || "",
+        jobClasses,
         lastUpdated: settingsData.lastUpdated || new Date().toISOString()
       };
 
@@ -304,6 +319,12 @@ async function saveStateToFirestore(newState: GuildState) {
         guildGuidelines: newState.guildGuidelines || "",
         guildName: newState.guildName || "",
         lastUpdated: newState.lastUpdated
+      });
+
+      // 7. Sync jobClasses to masterData/jobClasses
+      const jobClassesDocRef = db.collection("masterData").doc("jobClasses");
+      batch.set(jobClassesDocRef, {
+        classes: newState.jobClasses || []
       });
 
       await batch.commit();
