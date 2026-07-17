@@ -113,6 +113,13 @@ try {
     });
     console.log("Firebase Admin initialized successfully using service account file.");
     db = getFirestore();
+  } else if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    initializeApp({
+      credential: cert(serviceAccount)
+    });
+    console.log("Firebase Admin initialized successfully using FIREBASE_SERVICE_ACCOUNT env var.");
+    db = getFirestore();
   } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.K_SERVICE || process.env.GOOGLE_CLOUD_PROJECT) {
     // If running in Google Cloud or environment with default credentials
     initializeApp({
@@ -121,7 +128,7 @@ try {
     console.log("Firebase Admin initialized with project ID: rooc-guild-management-c360c");
     db = getFirestore();
   } else {
-    console.warn("⚠️ [Warning]: firebase-service-account.json not found and no GCP environment detected. Firestore is disabled; falling back to local file storage.");
+    console.warn("⚠️ [Warning]: firebase-service-account.json not found and no credentials detected. Firestore is disabled; falling back to local file storage.");
   }
 } catch (error) {
   console.error("Failed to initialize Firebase Admin:", error);
@@ -314,15 +321,13 @@ function saveLocalBackup() {
   }
 }
 
-async function startServer() {
-  // Load initial state before launching server
-  await loadStateFromFirestore();
+// Load initial state at startup
+loadStateFromFirestore().catch(console.error);
 
-  const app = express();
-  const PORT = 3000;
+const app = express();
 
-  // Middleware
-  app.use(express.json());
+// Middleware
+app.use(express.json());
 
   // API 1: Get complete state
   app.get("/api/state", async (req, res) => {
@@ -797,24 +802,26 @@ async function startServer() {
     }
   });
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+  // Vite middleware for development / Static serving / Local listen
+  if (!process.env.VERCEL) {
+    if (process.env.NODE_ENV !== "production") {
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } else {
+      const distPath = path.join(process.cwd(), "dist");
+      app.use(express.static(distPath));
+      app.get("*", (req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+    }
+
+    const PORT = Number(process.env.PORT) || 3000;
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on port ${PORT}`);
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on port ${PORT}`);
-  });
-}
-
-startServer();
+  export default app;
