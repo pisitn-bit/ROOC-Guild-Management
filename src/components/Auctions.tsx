@@ -349,7 +349,9 @@ export default function Auctions({
     onSendDiscordNotification(
       `📢 ประกาศกิจกรรมกิลด์ใหม่: ${newEvent.title}`,
       `กิจกรรม: ${newEvent.type === 'league' ? '🛡️ Guild League' : '🔥 OverRun'}\nวันที่: ${newEvent.date}\n\nขอเชิญชวนสมาชิกกิลด์ทุกคนล็อกอินเข้ามากด "เข้าร่วมกิจกรรม" เพื่อรักษาสิทธิ์ของตนเองในวงล้อและคิวประมูลไอเทม!`,
-      drops.map(d => ({ name: d.itemName, value: `จำนวน: ${d.quantity} ชิ้น (รอประมูล)`, inline: true })),
+      drops.length > 0
+        ? drops.map(d => ({ name: d.itemName, value: `จำนวน: ${d.quantity} ชิ้น (รอประมูล)`, inline: true }))
+        : [{ name: "💎 ไอเทมดรอป", value: "ไม่มีรายการไอเทมประมูลในรอบนี้", inline: false }],
       3066993 // Teal color
     );
 
@@ -1053,8 +1055,7 @@ export default function Auctions({
                 </button>
                 <button
                   type="submit"
-                  disabled={selectedDrops.length === 0}
-                  className="bg-blue-600 hover:bg-blue-500 disabled:opacity-45 text-white font-extrabold px-6 py-2 rounded-xl text-xs"
+                  className="bg-blue-600 hover:bg-blue-500 text-white font-extrabold px-6 py-2 rounded-xl text-xs"
                 >
                   ยืนยันและประกาศลง Discord
                 </button>

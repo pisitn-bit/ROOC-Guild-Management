@@ -19,7 +19,8 @@ import {
   Package,
   Info,
   Shield,
-  X
+  X,
+  Zap
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -378,6 +379,29 @@ export default function SpinWheel({
     };
 
     requestRef.current = requestAnimationFrame(animate);
+  };
+
+  // Instant spin draw bypassing the animation
+  const spinWheelInstantly = () => {
+    if (isSpinning || activeParticipants.length === 0) return;
+
+    setWheelWinner(null);
+    
+    // Choose a random winner from activeParticipants
+    const winnerIndex = Math.floor(Math.random() * activeParticipants.length);
+    const winner = activeParticipants[winnerIndex];
+    setWheelWinner(winner);
+
+    // Set canvas to a random angle and redraw
+    currentAngleRef.current = Math.random() * 2 * Math.PI;
+    drawWheel();
+
+    // Fire confetti on winning!
+    confetti({
+      particleCount: 160,
+      spread: 90,
+      origin: { y: 0.6 }
+    });
   };
 
   // Pointer pointing down at 270 degrees (1.5 * Math.PI)
@@ -1047,24 +1071,37 @@ export default function SpinWheel({
 
                 return (
                   <div className="w-full max-w-xs space-y-3 z-10">
-                    <button
-                      onClick={spinWheel}
-                      disabled={isSpinning || activeParticipants.length === 0 || isEventOutofStock || noDropsAvailable}
-                      className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black py-4 rounded-xl text-xs transition-all duration-300 disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center gap-1.5 shadow-lg shadow-blue-500/20 uppercase tracking-widest font-mono"
-                      id="spin-wheel-btn"
-                    >
-                      <Play className="w-4 h-4 fill-white shrink-0" />
-                      {isSpinning 
-                        ? 'วงล้อทองคำกำลังหมุน...' 
-                        : isEventOutofStock 
-                          ? 'ของหมดแล้ว! (Out of Stock)' 
-                          : noDropsAvailable 
-                            ? 'ไม่มีไอเทมดรอปในกิจกรรมนี้' 
-                            : activeParticipants.length === 0 
-                              ? 'ไม่มีผู้มีสิทธิ์ลุ้นรางวัล' 
-                              : 'กดปุ่มสปินวงล้อนำโชค!'
-                      }
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={spinWheel}
+                        disabled={isSpinning || activeParticipants.length === 0 || isEventOutofStock || noDropsAvailable}
+                        className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black py-4 rounded-xl text-[11px] transition-all duration-300 disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center gap-1.5 shadow-lg shadow-blue-500/20 uppercase tracking-widest font-mono"
+                        id="spin-wheel-btn"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-white shrink-0" />
+                        {isSpinning 
+                          ? 'กำลังหมุน...' 
+                          : isEventOutofStock 
+                            ? 'ของหมด!' 
+                            : noDropsAvailable 
+                              ? 'ไม่มีของดรอป' 
+                              : activeParticipants.length === 0 
+                                ? 'ไม่มีคนสิทธิ์ลุ้น' 
+                                : 'สปินวงล้อ'
+                        }
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={spinWheelInstantly}
+                        disabled={isSpinning || activeParticipants.length === 0 || isEventOutofStock || noDropsAvailable}
+                        className="bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-300 font-black px-4 py-4 rounded-xl text-[11px] transition-all duration-300 disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center gap-1 shadow-lg uppercase tracking-widest font-mono"
+                        title="สุ่มผลลัพธ์ทันที (Skip)"
+                      >
+                        <Zap className="w-3.5 h-3.5 fill-yellow-500 text-yellow-500 shrink-0" />
+                        Skip
+                      </button>
+                    </div>
                   </div>
                 );
               })()}
