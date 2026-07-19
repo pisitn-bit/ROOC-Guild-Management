@@ -675,13 +675,11 @@ export default function SpinWheel({
           return ev;
         });
 
-        // Mark the member as received in cycle ONLY if it is not a material drop
-        if (!isMaterial) {
-          updatedMembers = members.map(m => m.id === wheelWinner.id ? {
-            ...m,
-            hasReceivedInCycle: true
-          } : m);
-        }
+        // Mark the member as received in cycle
+        updatedMembers = members.map(m => m.id === wheelWinner.id ? {
+          ...m,
+          hasReceivedInCycle: true
+        } : m);
       }
     } else {
       // If no event, just mark hasReceivedInCycle
@@ -927,13 +925,39 @@ export default function SpinWheel({
             }
             return ev;
           });
-        }
 
-        onUpdateState({
-          ...state,
-          raffleResults: [...newResults, ...raffleResults],
-          events: updatedEvents
-        });
+          // Mark anyone who was assigned a drop as having received their item in this cycle
+          const newAssignedMemberIds = new Set<string>();
+          assignedDrops.forEach(d => {
+            if (d.assignedToMemberId) {
+              newAssignedMemberIds.add(d.assignedToMemberId);
+            }
+          });
+
+          let updatedMembers = members.map(m => {
+            if (newAssignedMemberIds.has(m.id)) {
+              return {
+                ...m,
+                hasReceivedInCycle: true
+              };
+            }
+            return m;
+          });
+
+          // Check if all members have received items. If yes, reset all to false
+          const totalCount = updatedMembers.length;
+          const receivedCount = updatedMembers.filter(m => m.hasReceivedInCycle).length;
+          if (totalCount > 0 && receivedCount === totalCount) {
+            updatedMembers = updatedMembers.map(m => ({ ...m, hasReceivedInCycle: false }));
+          }
+
+          onUpdateState({
+            ...state,
+            raffleResults: [...newResults, ...raffleResults],
+            events: updatedEvents,
+            members: updatedMembers
+          });
+        }
 
         confetti({
           particleCount: 220,

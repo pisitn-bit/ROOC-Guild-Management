@@ -666,6 +666,8 @@ export default function Auctions({
                 originalDropId: d.id,
                 isSplit: true
               });
+              // Mark them as having received an item in this cycle
+              tempMembers = tempMembers.map(m => m.id === participant.id ? { ...m, hasReceivedInCycle: true } : m);
             });
           }
 
@@ -832,7 +834,6 @@ export default function Auctions({
 
       event.drops.forEach(d => {
         if (d.assignedToMemberId) {
-          const isFeatherOrBook = shouldAverageDrop(d.itemName);
           updatedMembers = updatedMembers.map(m => {
             if (m.id === d.assignedToMemberId) {
               const alreadyIncremented = incrementedMembers.has(m.id);
@@ -841,8 +842,7 @@ export default function Auctions({
               }
               return { 
                 ...m, 
-                // Only mark hasReceivedInCycle if the drop is NOT a feather/book fragment
-                hasReceivedInCycle: isFeatherOrBook ? m.hasReceivedInCycle : true,
+                hasReceivedInCycle: true,
                 participatedWarsCount: m.participatedWarsCount + (alreadyIncremented ? 0 : 1)
               };
             }
