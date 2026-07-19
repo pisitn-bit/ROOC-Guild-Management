@@ -350,7 +350,7 @@ export default function Auctions({
     // Notify Discord
     onSendDiscordNotification(
       `📢 ประกาศกิจกรรมกิลด์ใหม่: ${newEvent.title}`,
-      `กิจกรรม: ${newEvent.type === 'league' ? '🛡️ Guild League' : '🔥 OverRun'}\nวันที่: ${newEvent.date}\n\nขอเชิญชวนสมาชิกกิลด์ทุกคนล็อกอินเข้ามากด "เข้าร่วมกิจกรรม" เพื่อรักษาสิทธิ์ของตนเองในวงล้อและคิวประมูลไอเทม!`,
+      `กิจกรรม: ${newEvent.type === 'league' ? '🛡️ Guild League' : '🔥 OverRun'}\nวันที่: ${newEvent.date}\n\nขอเชิญชวนสมาชิกกิลด์ทุกคนล็อกอินเข้ามากด "เข้าร่วมกิจกรรม" เพื่อรักษาสิทธิ์ของตนเองในวงล้อและคิวประมูลไอเทม!\n🔗 ลิงก์ระบบจัดการกิลด์: https://rooc-guild-management-ebon.vercel.app/`,
       drops.length > 0
         ? drops.map(d => ({ name: d.itemName, value: `จำนวน: ${d.quantity} ชิ้น (รอประมูล)`, inline: true }))
         : [{ name: "💎 ไอเทมดรอป", value: "ไม่มีรายการไอเทมประมูลในรอบนี้", inline: false }],
@@ -1225,7 +1225,7 @@ export default function Auctions({
                             onClick={() => {
                               onSendDiscordNotification(
                                 `📢 ประกาศกิจกรรมกิลด์: ${event.title}`,
-                                `กิจกรรม: ${event.type === 'league' ? '🛡️ Guild League' : '🔥 OverRun'}\nวันที่: ${event.date}\n\nขอเชิญชวนสมาชิกกิลด์ทุกคนล็อกอินเข้ามากด "เข้าร่วมกิจกรรม" เพื่อรักษาสิทธิ์ของตนเองในวงล้อและคิวประมูลไอเทม!`,
+                                `กิจกรรม: ${event.type === 'league' ? '🛡️ Guild League' : '🔥 OverRun'}\nวันที่: ${event.date}\n\nขอเชิญชวนสมาชิกกิลด์ทุกคนล็อกอินเข้ามากด "เข้าร่วมกิจกรรม" เพื่อรักษาสิทธิ์ของตนเองในวงล้อและคิวประมูลไอเทม!\n🔗 ลิงก์ระบบจัดการกิลด์: https://rooc-guild-management-ebon.vercel.app/`,
                                 event.drops && event.drops.length > 0
                                   ? event.drops.map(d => ({ name: d.itemName, value: `จำนวน: ${d.quantity} ชิ้น (รอประมูล)`, inline: true }))
                                   : [{ name: "💎 ไอเทมดรอป", value: "ไม่มีรายการไอเทมประมูลในรอบนี้", inline: false }],
