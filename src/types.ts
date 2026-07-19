@@ -25,6 +25,8 @@ export interface EventDrop {
   bidAmount: number; // ราคาประมูล
   whitelistJobClasses?: string[]; // อาชีพที่ได้รับสิทธิ์ Whitelist
   whitelistMemberIds?: string[]; // สมาชิกที่ได้รับสิทธิ์ Whitelist
+  originalDropId?: string; // ไอดีไอเทมดั้งเดิมก่อนแบ่งเฉลี่ย
+  isSplit?: boolean; // ระบุว่าเป็นไอเทมที่ถูกเฉลี่ยแบ่งมาจากชิ้นใหญ่
 }
 
 export interface EventExcuse {
@@ -59,6 +61,7 @@ export interface RaffleResult {
   winnerName: string;
   timestamp: string;
   itemType: string;
+  eventId?: string; // ไอดีกิจกรรมที่เกี่ยวข้องกับการสุ่ม/แจก
 }
 
 export interface DiscordConfig {

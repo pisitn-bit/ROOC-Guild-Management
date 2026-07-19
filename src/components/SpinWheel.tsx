@@ -175,6 +175,81 @@ export default function SpinWheel({
     setWhitelistTargetDrop(null);
   };
 
+  // Reset all auction results for the current selected event
+  const handleResetAuction = () => {
+    if (selectedEventId === 'all') return;
+    const activeEvent = events.find(e => e.id === selectedEventId);
+    if (!activeEvent) return;
+
+    triggerConfirm(
+      'ยืนยันการล้างผลการประมูลทั้งหมด',
+      'คำเตือน: คุณแน่ใจหรือไม่ว่าต้องการล้างผลการประมูลและการจัดสรรของรางวัลทั้งหมดในกิจกรรมรอบนี้? ข้อมูลการจัดสรรและไอเทมที่ถูกเฉลี่ยจะถูกกู้คืนเป็นค่าเริ่มต้นก่อนจัดสรร',
+      () => {
+        // Reconstruct the original drops (re-merging any split drops)
+        const originalDropsMap = new Map<string, EventDrop>();
+
+        activeEvent.drops.forEach(drop => {
+          if (drop.isSplit && drop.originalDropId) {
+            const existing = originalDropsMap.get(drop.originalDropId);
+            if (existing) {
+              existing.quantity += drop.quantity;
+            } else {
+              originalDropsMap.set(drop.originalDropId, {
+                ...drop,
+                id: drop.originalDropId,
+                assignedToMemberId: null,
+                assignedToMemberName: null,
+                bidAmount: 0,
+                isSplit: false,
+                originalDropId: undefined
+              });
+            }
+          } else {
+            originalDropsMap.set(drop.id, {
+              ...drop,
+              assignedToMemberId: null,
+              assignedToMemberName: null,
+              bidAmount: 0,
+              isSplit: false,
+              originalDropId: undefined
+            });
+          }
+        });
+
+        const resetDrops = Array.from(originalDropsMap.values());
+
+        // Update the event in the events list
+        const updatedEvents = events.map(ev => {
+          if (ev.id === selectedEventId) {
+            return {
+              ...ev,
+              drops: resetDrops
+            };
+          }
+          return ev;
+        });
+
+        // Also clean up any raffle results associated with this event
+        const updatedRaffleResults = raffleResults.filter(res => res.eventId !== selectedEventId);
+
+        onUpdateState({
+          ...state,
+          events: updatedEvents,
+          raffleResults: updatedRaffleResults
+        });
+
+        onSendDiscordNotification(
+          `🔄 รีเซ็ตและล้างผลการประมูลกิลด์รอบนี้`,
+          `ผู้ดูแลระบบได้ทำการล้างผลการจัดสรรและประมูลของรางวัลทั้งหมดประจำรอบกิจกรรม **${activeEvent.title}** เรียบร้อยแล้ว เพื่อเตรียมการจัดสรรใหม่`,
+          [],
+          15158332 // Red-ish
+        );
+
+        triggerAlert('สำเร็จ', 'ล้างผลการประมูลและการจัดสรรของรางวัลรอบนี้ทั้งหมดเรียบร้อยแล้ว');
+      }
+    );
+  };
+
   // Wheel Physics & Animation state
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isSpinning, setIsSpinning] = useState(false);
@@ -474,7 +549,8 @@ export default function SpinWheel({
       prizeName: prizeNameStr,
       winnerName: wheelWinner.name,
       timestamp: new Date().toISOString(),
-      itemType: 'raffle'
+      itemType: 'raffle',
+      eventId: selectedEventId
     };
 
     onUpdateState({
@@ -578,7 +654,9 @@ export default function SpinWheel({
                     id: splitDropId,
                     quantity: qty,
                     assignedToMemberId: participant.id,
-                    assignedToMemberName: participant.name
+                    assignedToMemberName: participant.name,
+                    originalDropId: drop.id,
+                    isSplit: true
                   });
 
                   newResults.push({
@@ -586,7 +664,8 @@ export default function SpinWheel({
                     prizeName: `ไอเทม: ${drop.itemName} (x${qty} ชิ้น)`,
                     winnerName: participant.name,
                     timestamp: new Date().toISOString(),
-                    itemType: 'auto-raffle'
+                    itemType: 'auto-raffle',
+                    eventId: currentSelectedEvent.id
                   });
                 }
               });
@@ -609,7 +688,8 @@ export default function SpinWheel({
                   prizeName: `ไอเทม: ${drop.itemName}`,
                   winnerName: winner.name,
                   timestamp: new Date().toISOString(),
-                  itemType: 'auto-raffle'
+                  itemType: 'auto-raffle',
+                  eventId: currentSelectedEvent.id
                 });
 
                 assignedDrops.push({
@@ -636,7 +716,8 @@ export default function SpinWheel({
                   prizeName: `ไอเทม: ${drop.itemName}`,
                   winnerName: winner.name,
                   timestamp: new Date().toISOString(),
-                  itemType: 'auto-raffle'
+                  itemType: 'auto-raffle',
+                  eventId: currentSelectedEvent.id
                 });
 
                 assignedDrops.push({
@@ -658,7 +739,8 @@ export default function SpinWheel({
                   prizeName: `ไอเทม: ${drop.itemName}`,
                   winnerName: winner.name,
                   timestamp: new Date().toISOString(),
-                  itemType: 'auto-raffle'
+                  itemType: 'auto-raffle',
+                  eventId: currentSelectedEvent.id
                 });
 
                 assignedDrops.push({
@@ -961,7 +1043,12 @@ export default function SpinWheel({
                                     <div className="flex justify-between items-center">
                                       <div className="space-y-0.5">
                                         <span className="font-extrabold text-slate-200 block">🎮 {drop.itemName}</span>
-                                        <span className="text-[10px] text-slate-500 font-mono">จำนวน: x{drop.quantity} ชิ้น</span>
+                                        <span className="text-[10px] text-slate-500 font-mono block">จำนวน: x{drop.quantity} ชิ้น</span>
+                                        {drop.assignedToMemberName && (
+                                          <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.2 rounded font-bold mt-1 inline-block">
+                                            ผู้ได้รับ: {drop.assignedToMemberName}
+                                          </span>
+                                        )}
                                       </div>
                                       <div className="flex items-center gap-1.5">
                                         <button
@@ -1011,6 +1098,21 @@ export default function SpinWheel({
                               })}
                             </div>
                           )}
+                          {(() => {
+                            const hasAssigned = activeEvent.drops?.some(d => d.assignedToMemberId);
+                            if (!hasAssigned) return null;
+                            return (
+                              <div className="pt-2">
+                                <button
+                                  type="button"
+                                  onClick={handleResetAuction}
+                                  className="w-full bg-red-950/20 border border-red-500/30 hover:bg-red-950/40 text-red-400 font-extrabold py-2 rounded-xl text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                                >
+                                  🔄 ล้างผลการประมูลรอบนี้ทั้งหมด
+                                </button>
+                              </div>
+                            );
+                          })()}
                         </div>
 
                       </div>
@@ -1042,7 +1144,14 @@ export default function SpinWheel({
                               return (
                                 <div key={drop.id} className="p-2.5 bg-slate-950/30 rounded-xl border border-slate-850/40 space-y-1.5">
                                   <div className="flex justify-between items-center">
-                                    <span className="font-extrabold text-slate-300">💎 {drop.itemName}</span>
+                                    <div className="space-y-0.5">
+                                      <span className="font-extrabold text-slate-300 block">💎 {drop.itemName}</span>
+                                      {drop.assignedToMemberName && (
+                                        <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.2 rounded font-bold mt-0.5 inline-block font-sans">
+                                          ผู้ได้รับ: {drop.assignedToMemberName}
+                                        </span>
+                                      )}
+                                    </div>
                                     <span className="font-mono text-yellow-500 font-bold bg-slate-950 px-2 py-0.5 rounded text-[10px]">x{drop.quantity} ชิ้น</span>
                                   </div>
                                   {totalWhitelistCount > 0 && (
