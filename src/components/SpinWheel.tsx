@@ -379,8 +379,10 @@ export default function SpinWheel({
       console.error(e);
     }
 
-    // Group by itemName
+    // Group by itemName and calculate unassigned (remainder) quantities
     const assignedGroups: { [itemName: string]: { memberName: string; quantity: number }[] } = {};
+    const unassignedQuantities: { [itemName: string]: number } = {};
+
     activeEvent.drops.forEach(d => {
       if (d.assignedToMemberId && d.assignedToMemberName) {
         if (!assignedGroups[d.itemName]) {
@@ -390,6 +392,8 @@ export default function SpinWheel({
           memberName: d.assignedToMemberName,
           quantity: d.quantity
         });
+      } else {
+        unassignedQuantities[d.itemName] = (unassignedQuantities[d.itemName] || 0) + d.quantity;
       }
     });
 
@@ -400,12 +404,24 @@ export default function SpinWheel({
       ``
     ];
 
-    Object.entries(assignedGroups).forEach(([itemName, recipients]) => {
-      lines.push(`รายชื่อที่ได้ประมูล ${itemName} มี`);
-      recipients.forEach((rec, idx) => {
-        lines.push(`${idx + 1} . ${rec.memberName} จำนวน ${rec.quantity} ชิ้น`);
-      });
-      lines.push(``); // Empty line after each group
+    // Gather all drop item names in this event
+    const itemNames = Array.from(new Set(activeEvent.drops.map(d => d.itemName)));
+
+    itemNames.forEach(itemName => {
+      const recipients = assignedGroups[itemName] || [];
+      const leftQty = unassignedQuantities[itemName] || 0;
+
+      // Only list if there are either recipients OR remaining quantity
+      if (recipients.length > 0 || leftQty > 0) {
+        lines.push(`รายชื่อที่ได้ประมูล ${itemName} มี`);
+        recipients.forEach((rec, idx) => {
+          lines.push(`${idx + 1} . ${rec.memberName} จำนวน ${rec.quantity} ชิ้น`);
+        });
+        if (leftQty > 0) {
+          lines.push(`คงเหลือ ${leftQty} ชิ้น`);
+        }
+        lines.push(``); // Empty line after each group
+      }
     });
 
     // Remove the trailing empty line if present
