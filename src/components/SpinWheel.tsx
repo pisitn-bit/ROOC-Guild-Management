@@ -44,7 +44,7 @@ export default function SpinWheel({
   showConfirm
 }: SpinWheelProps) {
   
-
+  const [eventLimit, setEventLimit] = useState<number>(1);
 
   // Whitelist modal states
   const [isWhitelistModalOpen, setIsWhitelistModalOpen] = useState(false);
@@ -471,79 +471,7 @@ export default function SpinWheel({
     }
   }, [selectedEventId, events, members]);
 
-  // Automatically split material drops in background when event is selected
-  useEffect(() => {
-    if (selectedEventId === 'all') return;
-    const activeEvent = events.find(e => e.id === selectedEventId);
-    if (!activeEvent || activeEvent.status !== 'active') return;
 
-    const shouldAverageDrop = (itemName: string) => {
-      const name = itemName.toLowerCase();
-      return name.includes('เศษสมุด') || name.includes('ขนนก') || name.includes('feather') || name.includes('fragment');
-    };
-
-    let changed = false;
-    const newDrops: EventDrop[] = [];
-    const eventParticipants = activeEvent.participants;
-
-    activeEvent.drops.forEach(drop => {
-      if (!drop.assignedToMemberId && shouldAverageDrop(drop.itemName) && eventParticipants.length > 0 && !drop.isSplit) {
-        const P = eventParticipants.length;
-        const base = Math.floor(drop.quantity / P);
-        const remainder = drop.quantity % P;
-
-        if (base > 0) {
-          eventParticipants.forEach(pId => {
-            const member = members.find(m => m.id === pId);
-            if (member) {
-              newDrops.push({
-                ...drop,
-                id: `drop-split-${drop.id}-${pId}`,
-                quantity: base,
-                assignedToMemberId: pId,
-                assignedToMemberName: member.name,
-                originalDropId: drop.id,
-                isSplit: true
-              });
-            }
-          });
-        }
-
-        if (remainder > 0) {
-          newDrops.push({
-            ...drop,
-            id: `drop-remainder-${drop.id}`,
-            quantity: remainder,
-            assignedToMemberId: null,
-            assignedToMemberName: null,
-            bidAmount: 0,
-            originalDropId: drop.id,
-            isSplit: true
-          });
-        }
-        changed = true;
-      } else {
-        newDrops.push(drop);
-      }
-    });
-
-    if (changed) {
-      const updatedEvents = events.map(ev => {
-        if (ev.id === selectedEventId) {
-          return {
-            ...ev,
-            drops: newDrops
-          };
-        }
-        return ev;
-      });
-
-      onUpdateState({
-        ...state,
-        events: updatedEvents
-      });
-    }
-  }, [selectedEventId, events, members, onUpdateState, state]);
 
   // Helper to count how many items a member has been assigned in the selected event (or cycle)
   const getAssignedCount = (memberId: string) => {
@@ -565,19 +493,37 @@ export default function SpinWheel({
   })();
 
   // Active member structures representing the slices
-  const activeParticipants = members.filter(m => {
-    const isMatched = participants.includes(m.id);
-    if (!isMatched) return false;
-    if (excludeReceived) {
-      return getAssignedCount(m.id) === eligibleAssignedCount;
-    }
-    return true;
-  });
+  const activeParticipants = (() => {
+    // 1. Get all checked participants who have not exceeded the event limit
+    const candidates = members.filter(m => {
+      const isMatched = participants.includes(m.id);
+      if (!isMatched) return false;
+      if (selectedEventId !== 'all') {
+        const assignedInEvent = getAssignedCount(m.id);
+        if (assignedInEvent >= eventLimit) {
+          return false;
+        }
+      }
+      return true;
+    });
 
-  // Redraw Wheel whenever participants, members, events or settings change
+    if (!excludeReceived) return candidates;
+
+    // 2. Filter candidates by hasReceivedInCycle priority
+    // Priority 1: members who have NOT received in cycle
+    const priority1 = candidates.filter(m => !m.hasReceivedInCycle);
+    if (priority1.length > 0) {
+      return priority1;
+    }
+
+    // Priority 2: members who have received in cycle
+    return candidates;
+  })();
+
+  // Redraw Wheel whenever participants, members, events, settings or limit change
   useEffect(() => {
     drawWheel();
-  }, [participants, members, selectedEventId, events, excludeReceived]);
+  }, [participants, members, selectedEventId, events, excludeReceived, eventLimit]);
 
   // Color palette for professional RPG-style wheel slices
   const sliceColors = [
@@ -785,21 +731,60 @@ export default function SpinWheel({
       const unassignedDrop = currentSelectedEvent?.drops?.find(d => !d.assignedToMemberId);
       
       if (currentSelectedEvent && unassignedDrop) {
-        const spinQty = unassignedDrop.quantity;
+        const isMaterial = shouldAverageDrop(unassignedDrop.itemName);
+        
+        let spinQty = unassignedDrop.quantity;
+        if (isMaterial) {
+          const originalQty = unassignedDrop.originalQuantity || unassignedDrop.quantity;
+          const P = participants.length;
+          const base = P <= 0 ? 1 : Math.floor(originalQty / P);
+          spinQty = Math.min(base, unassignedDrop.quantity);
+        }
+
         prizeNameStr = `ไอเทม: ${unassignedDrop.itemName} (x${spinQty} ชิ้น)`;
         
         // Update the drop in the event
         updatedEvents = events.map(ev => {
           if (ev.id === selectedEventId) {
-            const newDrops = ev.drops.map(d => {
+            const newDrops: EventDrop[] = [];
+            
+            ev.drops.forEach(d => {
               if (d.id === unassignedDrop.id) {
-                return {
-                  ...d,
-                  assignedToMemberId: wheelWinner.id,
-                  assignedToMemberName: wheelWinner.name
-                };
+                if (spinQty === d.quantity) {
+                  // Assign the whole drop
+                  newDrops.push({
+                    ...d,
+                    assignedToMemberId: wheelWinner.id,
+                    assignedToMemberName: wheelWinner.name,
+                    originalQuantity: d.originalQuantity || d.quantity
+                  });
+                } else {
+                  // Split it!
+                  newDrops.push({
+                    ...d,
+                    id: `drop-split-${d.id}-${wheelWinner.id}-${Date.now()}`,
+                    quantity: spinQty,
+                    assignedToMemberId: wheelWinner.id,
+                    assignedToMemberName: wheelWinner.name,
+                    originalDropId: d.originalDropId || d.id,
+                    isSplit: true,
+                    originalQuantity: d.originalQuantity || d.quantity
+                  });
+                  newDrops.push({
+                    ...d,
+                    id: `drop-remainder-${d.id}-${Date.now()}`,
+                    quantity: d.quantity - spinQty,
+                    assignedToMemberId: null,
+                    assignedToMemberName: null,
+                    bidAmount: 0,
+                    originalDropId: d.originalDropId || d.id,
+                    isSplit: true,
+                    originalQuantity: d.originalQuantity || d.quantity
+                  });
+                }
+              } else {
+                newDrops.push(d);
               }
-              return d;
             });
 
             return {
@@ -907,8 +892,8 @@ export default function SpinWheel({
               </select>
             </div>
 
-            {/* Custom Filter Checkbox */}
-            <div className="pt-1">
+            {/* Custom Filter Checkbox & Limit */}
+            <div className="pt-1 space-y-2">
               <label className="flex items-center gap-2 p-2.5 bg-blue-950/20 border border-blue-500/20 rounded-xl cursor-pointer select-none">
                 <input
                   type="checkbox"
@@ -918,6 +903,22 @@ export default function SpinWheel({
                 />
                 <span className="text-[11px] font-bold text-blue-300">กรองคนที่เคยได้รับของในไซเคิลนี้ออกแล้ว (คิวเท่าเทียม)</span>
               </label>
+
+              <div className="flex items-center justify-between p-2.5 bg-slate-950/40 border border-slate-800 rounded-xl">
+                <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1">
+                  🎯 จำกัดการรับไอเทมสูงสุดในกิจกรรมนี้:
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    min="1"
+                    value={eventLimit}
+                    onChange={e => setEventLimit(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-16 bg-slate-950 text-slate-200 border border-slate-800 rounded-lg px-2 py-1 text-center focus:outline-none focus:border-blue-500 font-mono text-xs"
+                  />
+                  <span className="text-[10px] font-extrabold text-slate-500 uppercase">ชิ้น</span>
+                </div>
+              </div>
             </div>
 
             {/* Displaying Current Registered Members & Classes before Wheel spin */}
@@ -1253,13 +1254,12 @@ export default function SpinWheel({
                   return name.includes('เศษสมุด') || name.includes('ขนนก') || name.includes('feather') || name.includes('fragment');
                 };
 
-                let spinQty = 1;
+                let spinQty = unassignedDrop.quantity;
                 if (shouldAverageDropLocal(unassignedDrop.itemName)) {
-                  const E = activeParticipants.length;
-                  const Q = unassignedDrop.quantity;
-                  spinQty = E <= 0 ? 1 : E > Q ? 1 : Math.floor(Q / E);
-                } else {
-                  spinQty = unassignedDrop.quantity;
+                  const originalQty = unassignedDrop.originalQuantity || unassignedDrop.quantity;
+                  const P = participants.length;
+                  const base = P <= 0 ? 1 : Math.floor(originalQty / P);
+                  spinQty = Math.min(base, unassignedDrop.quantity);
                 }
 
                 return (

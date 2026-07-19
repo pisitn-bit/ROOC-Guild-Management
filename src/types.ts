@@ -27,6 +27,7 @@ export interface EventDrop {
   whitelistMemberIds?: string[]; // สมาชิกที่ได้รับสิทธิ์ Whitelist
   originalDropId?: string; // ไอดีไอเทมดั้งเดิมก่อนแบ่งเฉลี่ย
   isSplit?: boolean; // ระบุว่าเป็นไอเทมที่ถูกเฉลี่ยแบ่งมาจากชิ้นใหญ่
+  originalQuantity?: number; // จำนวนดั้งเดิมก่อนการแบ่ง
 }
 
 export interface EventExcuse {
