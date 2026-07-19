@@ -794,10 +794,15 @@ app.use(express.json());
 
     console.log(`[Discord Bot Log]: "${title}" - ${message}`);
 
-    const discordPayload = {
+    const discordPayload: any = {
       username: botName,
       avatar_url: "https://raw.githubusercontent.com/lucide-react/lucide/main/icons/shield.png",
-      embeds: [
+    };
+
+    if (req.body.content) {
+      discordPayload.content = req.body.content;
+    } else {
+      discordPayload.embeds = [
         {
           title: title || "📣 แจ้งเตือนจากกิลด์ RO Classic",
           description: message || "มีการอัปเดตใหม่ในระบบกิลด์",
@@ -808,8 +813,8 @@ app.use(express.json());
             text: "ระบบจัดการกิลด์ RO Classic - โปร่งใส ตรวจสอบได้",
           }
         }
-      ]
-    };
+      ];
+    }
 
     // If webhook is disabled or empty, we simulate it
     if (!enabled || !webhookUrl) {

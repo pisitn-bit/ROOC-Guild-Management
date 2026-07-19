@@ -32,7 +32,7 @@ interface AuctionsProps {
   currentUser: Member | null;
   isAdmin: boolean;
   onUpdateState: (newState: GuildState) => void;
-  onSendDiscordNotification: (title: string, message: string, fields: any[], color?: number) => void;
+  onSendDiscordNotification: (title: string, message: string, fields: any[], color?: number, content?: string) => void;
   showAlert?: (title: string, message: string) => void;
   showConfirm?: (title: string, message: string, onConfirm: () => void) => void;
 }

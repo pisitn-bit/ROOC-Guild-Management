@@ -80,9 +80,9 @@
   "rafflePrizes": [],
   "raffleResults": [],
   "discordConfig": {
-    "webhookUrl": "",
+    "webhookUrl": "https://discord.com/api/webhooks/1528262178048839770/kCMNimjdyyMy0g3_TKgFGoW3foT2Rd5kzMF2RR--CV8lEkH-p-40oADiD-FDIwbDy5iY",
     "botName": "บอทกิลด์ RO Classic",
-    "enabled": false
+    "enabled": true
   },
   "systemPIN": "ro-classic-1234",
   "adminPIN": "ro-admin-5678",

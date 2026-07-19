@@ -29,7 +29,7 @@ interface SpinWheelProps {
   currentUser: Member | null;
   isAdmin: boolean;
   onUpdateState: (newState: GuildState) => void;
-  onSendDiscordNotification: (title: string, message: string, fields: any[], color: number) => void;
+  onSendDiscordNotification: (title: string, message: string, fields: any[], color: number, content?: string) => void;
   showAlert?: (title: string, message: string) => void;
   showConfirm?: (title: string, message: string, onConfirm: () => void) => void;
 }
@@ -343,6 +343,88 @@ export default function SpinWheel({
         triggerAlert('สำเร็จ', `ลบประวัติและคืนสิทธิ์คิวของ "${resultToDelete.winnerName}" เรียบร้อยแล้ว`);
       }
     );
+  };
+
+  // Send event summary announcement to Discord
+  const handleSendDiscordSummary = () => {
+    if (selectedEventId === 'all') return;
+    const activeEvent = events.find(e => e.id === selectedEventId);
+    if (!activeEvent) return;
+
+    // Gather assigned drops
+    const assignedDrops = activeEvent.drops.filter(d => d.assignedToMemberId);
+    if (assignedDrops.length === 0) {
+      triggerAlert('ไม่มีข้อมูลจัดสรร', 'ไม่พบรายชื่อผู้ได้รับไอเทมดรอปที่จัดสรรแล้วในรอบกิจกรรมนี้');
+      return;
+    }
+
+    // Thai Date formatting helper
+    const days = ['วันอาทิตย์', 'วันจันทร์', 'วันอังคาร', 'วันพุธ', 'วันพฤหัสบดี', 'วันศุกร์', 'วันเสาร์'];
+    const months = [
+      'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+      'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+    ];
+
+    let dayName = 'วันจัดกิจกรรม';
+    let formattedDate = activeEvent.date;
+
+    try {
+      const date = new Date(activeEvent.date);
+      dayName = days[date.getDay()];
+      const dayOfMonth = date.getDate();
+      const monthName = months[date.getMonth()];
+      const buddhistYear = date.getFullYear() + 543;
+      formattedDate = `${dayOfMonth} ${monthName} ${buddhistYear}`;
+    } catch (e) {
+      console.error(e);
+    }
+
+    // Group by itemName
+    const assignedGroups: { [itemName: string]: { memberName: string; quantity: number }[] } = {};
+    activeEvent.drops.forEach(d => {
+      if (d.assignedToMemberId && d.assignedToMemberName) {
+        if (!assignedGroups[d.itemName]) {
+          assignedGroups[d.itemName] = [];
+        }
+        assignedGroups[d.itemName].push({
+          memberName: d.assignedToMemberName,
+          quantity: d.quantity
+        });
+      }
+    });
+
+    // Build raw content string
+    const lines: string[] = [
+      `📢 **ประกาศ กิจกรรม ${activeEvent.title}**`,
+      `ประจำ${dayName} ที่ ${formattedDate}`,
+      ``
+    ];
+
+    Object.entries(assignedGroups).forEach(([itemName, recipients]) => {
+      lines.push(`รายชื่อที่ได้ประมูล ${itemName} มี`);
+      recipients.forEach((rec, idx) => {
+        lines.push(`${idx + 1} . ${rec.memberName} จำนวน ${rec.quantity} ชิ้น`);
+      });
+      lines.push(``); // Empty line after each group
+    });
+
+    // Remove the trailing empty line if present
+    if (lines[lines.length - 1] === '') {
+      lines.pop();
+    }
+
+    const rawContent = lines.join('\n');
+
+    // Send it!
+    onSendDiscordNotification(
+      `ประกาศผลการจัดสรร`,
+      `ประกาศผลกิจกรรม ${activeEvent.title}`,
+      [],
+      3066993, // Teal/Green
+      rawContent // Content parameter!
+    );
+
+    triggerAlert('สำเร็จ', 'ส่งประกาศสรุปผลกิจกรรมไปยัง Discord เรียบร้อยแล้วครับ!');
   };
 
   // Wheel Physics & Animation state
@@ -1289,7 +1371,14 @@ export default function SpinWheel({
                             const hasAssigned = activeEvent.drops?.some(d => d.assignedToMemberId);
                             if (!hasAssigned) return null;
                             return (
-                              <div className="pt-2">
+                              <div className="pt-2 space-y-2">
+                                <button
+                                  type="button"
+                                  onClick={handleSendDiscordSummary}
+                                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-2.5 rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-emerald-500/10"
+                                >
+                                  📢 ส่งประกาศผลเข้า Discord
+                                </button>
                                 <button
                                   type="button"
                                   onClick={handleResetAuction}
