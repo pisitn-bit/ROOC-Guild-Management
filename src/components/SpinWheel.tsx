@@ -229,8 +229,21 @@ export default function SpinWheel({
           return ev;
         });
 
-        // Also clean up any raffle results associated with this event
-        const updatedRaffleResults = raffleResults.filter(res => res.eventId !== selectedEventId);
+        // Clean up raffle results associated with this event
+        const updatedRaffleResults = raffleResults.filter(res => {
+          // If the result is linked to this event, filter it out
+          if (res.eventId === selectedEventId) return false;
+
+          // Fallback: check if the prizeName contains any drop item names from the current event
+          const isRelatedToEventDrop = activeEvent.drops.some(drop => {
+            const nameToMatch = drop.itemName.replace(/\s+/g, '').toLowerCase();
+            const prizeToMatch = res.prizeName.replace(/\s+/g, '').toLowerCase();
+            return prizeToMatch.includes(nameToMatch) || nameToMatch.includes(prizeToMatch);
+          });
+          if (isRelatedToEventDrop) return false;
+
+          return true;
+        });
 
         onUpdateState({
           ...state,
@@ -246,6 +259,21 @@ export default function SpinWheel({
         );
 
         triggerAlert('สำเร็จ', 'ล้างผลการประมูลและการจัดสรรของรางวัลรอบนี้ทั้งหมดเรียบร้อยแล้ว');
+      }
+    );
+  };
+
+  // Manually delete a single raffle result from the audit trail
+  const handleDeleteRaffleResult = (resultId: string) => {
+    triggerConfirm(
+      'ลบประวัติการรับรางวัล',
+      'คุณแน่ใจหรือไม่ว่าต้องการลบประวัติการรับรางวัลรายการนี้ออกจากตาราง?',
+      () => {
+        const updatedResults = raffleResults.filter(res => res.id !== resultId);
+        onUpdateState({
+          ...state,
+          raffleResults: updatedResults
+        });
       }
     );
   };
@@ -1381,7 +1409,8 @@ export default function SpinWheel({
                       <th className="p-2.5">ผู้ได้รับรางวัล</th>
                       <th className="p-2.5">ของรางวัล</th>
                       <th className="p-2.5">เวลาที่บันทึก</th>
-                      <th className="p-2.5 text-right">วิธีแจก</th>
+                      <th className="p-2.5">วิธีแจก</th>
+                      {isAdmin && <th className="p-2.5 text-right">จัดการ</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-850">
@@ -1392,13 +1421,25 @@ export default function SpinWheel({
                         <td className="p-2.5 text-[10px] text-slate-500">
                           {new Date(res.timestamp).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.
                         </td>
-                        <td className="p-2.5 text-right">
+                        <td className="p-2.5">
                           <span className={`px-1.5 py-0.2 rounded text-[8px] font-bold ${
                             res.itemType === 'raffle' ? 'bg-purple-950 text-purple-400 border border-purple-500/10' : 'bg-blue-950 text-blue-400 border border-blue-500/10'
                           }`}>
                             {res.itemType === 'raffle' ? 'หมุนวงล้อสด' : 'เฉลี่ยแบ่งแจก'}
                           </span>
                         </td>
+                        {isAdmin && (
+                          <td className="p-2.5 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteRaffleResult(res.id)}
+                              className="text-slate-500 hover:text-red-400 p-1 rounded hover:bg-slate-900 transition-colors cursor-pointer"
+                              title="ลบบันทึกประวัตินี้"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
