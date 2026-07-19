@@ -738,16 +738,18 @@ export default function SpinWheel({
               });
 
               const targets = whitelistedParticipants.length > 0 ? whitelistedParticipants : tempParticipants;
-              const quantities = distributeEvenly(drop.quantity, targets.length);
+              const P = targets.length;
+              const base = Math.floor(drop.quantity / P);
+              const remainder = drop.quantity % P;
 
-              targets.forEach((participant, idx) => {
-                const qty = quantities[idx];
-                if (qty > 0) {
+              // 1. Assign the base quantity to each matching participant
+              if (base > 0) {
+                targets.forEach(participant => {
                   const splitDropId = `drop-split-${drop.id}-${participant.id}`;
                   assignedDrops.push({
                     ...drop,
                     id: splitDropId,
-                    quantity: qty,
+                    quantity: base,
                     assignedToMemberId: participant.id,
                     assignedToMemberName: participant.name,
                     originalDropId: drop.id,
@@ -756,14 +758,28 @@ export default function SpinWheel({
 
                   newResults.push({
                     id: `ref-auto-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                    prizeName: `ไอเทม: ${drop.itemName} (x${qty} ชิ้น)`,
+                    prizeName: `ไอเทม: ${drop.itemName} (x${base} ชิ้น)`,
                     winnerName: participant.name,
                     timestamp: new Date().toISOString(),
                     itemType: 'auto-raffle',
                     eventId: currentSelectedEvent.id
                   });
-                }
-              });
+                });
+              }
+
+              // 2. Keep the remainder as an unassigned drop for bidding/buyout
+              if (remainder > 0) {
+                assignedDrops.push({
+                  ...drop,
+                  id: `drop-remainder-${drop.id}`,
+                  quantity: remainder,
+                  assignedToMemberId: null,
+                  assignedToMemberName: null,
+                  bidAmount: 0,
+                  originalDropId: drop.id,
+                  isSplit: true
+                });
+              }
             } else {
               // Normal drop logic (non-averaged items like cards, equipment)
               // Find candidates who match whitelist and haven't received anything in this batch

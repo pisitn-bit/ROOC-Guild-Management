@@ -649,21 +649,39 @@ export default function Auctions({
           : tempMembers.filter(m => eventParticipantIds.includes(m.id));
 
         if (targets.length > 0) {
-          const quantities = distributeEvenly(d.quantity, targets.length);
-          targets.forEach((participant, idx) => {
-            const qty = quantities[idx];
-            if (qty > 0) {
+          const P = targets.length;
+          const base = Math.floor(d.quantity / P);
+          const remainder = d.quantity % P;
+
+          if (base > 0) {
+            targets.forEach(participant => {
               const splitDropId = `drop-split-${d.id}-${participant.id}`;
               finalDrops.push({
                 ...d,
                 id: splitDropId,
-                quantity: qty,
+                quantity: base,
                 assignedToMemberId: participant.id,
                 assignedToMemberName: participant.name,
-                bidAmount: 5000 // default initial/average bid
+                bidAmount: 5000, // default initial/average bid
+                originalDropId: d.id,
+                isSplit: true
               });
-            }
-          });
+            });
+          }
+
+          if (remainder > 0) {
+            finalDrops.push({
+              ...d,
+              id: `drop-remainder-${d.id}`,
+              quantity: remainder,
+              assignedToMemberId: null,
+              assignedToMemberName: null,
+              bidAmount: 0,
+              originalDropId: d.id,
+              isSplit: true
+            });
+          }
+
           changed = true;
         } else {
           finalDrops.push(d);
