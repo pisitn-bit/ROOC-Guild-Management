@@ -44,7 +44,7 @@ export default function SpinWheel({
   showConfirm
 }: SpinWheelProps) {
   
-  const [raffleMode, setRaffleMode] = useState<'wheel' | 'auto'>('wheel');
+
 
   // Whitelist modal states
   const [isWhitelistModalOpen, setIsWhitelistModalOpen] = useState(false);
@@ -471,6 +471,80 @@ export default function SpinWheel({
     }
   }, [selectedEventId, events, members]);
 
+  // Automatically split material drops in background when event is selected
+  useEffect(() => {
+    if (selectedEventId === 'all') return;
+    const activeEvent = events.find(e => e.id === selectedEventId);
+    if (!activeEvent || activeEvent.status !== 'active') return;
+
+    const shouldAverageDrop = (itemName: string) => {
+      const name = itemName.toLowerCase();
+      return name.includes('เศษสมุด') || name.includes('ขนนก') || name.includes('feather') || name.includes('fragment');
+    };
+
+    let changed = false;
+    const newDrops: EventDrop[] = [];
+    const eventParticipants = activeEvent.participants;
+
+    activeEvent.drops.forEach(drop => {
+      if (!drop.assignedToMemberId && shouldAverageDrop(drop.itemName) && eventParticipants.length > 0 && !drop.isSplit) {
+        const P = eventParticipants.length;
+        const base = Math.floor(drop.quantity / P);
+        const remainder = drop.quantity % P;
+
+        if (base > 0) {
+          eventParticipants.forEach(pId => {
+            const member = members.find(m => m.id === pId);
+            if (member) {
+              newDrops.push({
+                ...drop,
+                id: `drop-split-${drop.id}-${pId}`,
+                quantity: base,
+                assignedToMemberId: pId,
+                assignedToMemberName: member.name,
+                originalDropId: drop.id,
+                isSplit: true
+              });
+            }
+          });
+        }
+
+        if (remainder > 0) {
+          newDrops.push({
+            ...drop,
+            id: `drop-remainder-${drop.id}`,
+            quantity: remainder,
+            assignedToMemberId: null,
+            assignedToMemberName: null,
+            bidAmount: 0,
+            originalDropId: drop.id,
+            isSplit: true
+          });
+        }
+        changed = true;
+      } else {
+        newDrops.push(drop);
+      }
+    });
+
+    if (changed) {
+      const updatedEvents = events.map(ev => {
+        if (ev.id === selectedEventId) {
+          return {
+            ...ev,
+            drops: newDrops
+          };
+        }
+        return ev;
+      });
+
+      onUpdateState({
+        ...state,
+        events: updatedEvents
+      });
+    }
+  }, [selectedEventId, events, members, onUpdateState, state]);
+
   // Helper to count how many items a member has been assigned in the selected event (or cycle)
   const getAssignedCount = (memberId: string) => {
     if (selectedEventId === 'all') {
@@ -711,58 +785,21 @@ export default function SpinWheel({
       const unassignedDrop = currentSelectedEvent?.drops?.find(d => !d.assignedToMemberId);
       
       if (currentSelectedEvent && unassignedDrop) {
-        const isMaterial = shouldAverageDrop(unassignedDrop.itemName);
-        
-        let spinQty = 1;
-        if (isMaterial) {
-          const E = activeParticipants.length;
-          const Q = unassignedDrop.quantity;
-          spinQty = E <= 0 ? 1 : E > Q ? 1 : Math.floor(Q / E);
-        } else {
-          spinQty = unassignedDrop.quantity;
-        }
-
+        const spinQty = unassignedDrop.quantity;
         prizeNameStr = `ไอเทม: ${unassignedDrop.itemName} (x${spinQty} ชิ้น)`;
         
         // Update the drop in the event
         updatedEvents = events.map(ev => {
           if (ev.id === selectedEventId) {
-            const newDrops: EventDrop[] = [];
-            
-            ev.drops.forEach(d => {
+            const newDrops = ev.drops.map(d => {
               if (d.id === unassignedDrop.id) {
-                if (spinQty === d.quantity) {
-                  // Assign the whole drop
-                  newDrops.push({
-                    ...d,
-                    assignedToMemberId: wheelWinner.id,
-                    assignedToMemberName: wheelWinner.name
-                  });
-                } else {
-                  // Split it!
-                  newDrops.push({
-                    ...d,
-                    id: `drop-split-${d.id}-${wheelWinner.id}`,
-                    quantity: spinQty,
-                    assignedToMemberId: wheelWinner.id,
-                    assignedToMemberName: wheelWinner.name,
-                    originalDropId: d.id,
-                    isSplit: true
-                  });
-                  newDrops.push({
-                    ...d,
-                    id: `drop-remainder-${d.id}-${Date.now()}`,
-                    quantity: d.quantity - spinQty,
-                    assignedToMemberId: null,
-                    assignedToMemberName: null,
-                    bidAmount: 0,
-                    originalDropId: d.id,
-                    isSplit: true
-                  });
-                }
-              } else {
-                newDrops.push(d);
+                return {
+                  ...d,
+                  assignedToMemberId: wheelWinner.id,
+                  assignedToMemberName: wheelWinner.name
+                };
               }
+              return d;
             });
 
             return {
@@ -818,266 +855,7 @@ export default function SpinWheel({
     setWheelWinner(null);
   };
 
-  // 2. Auto Distribution Raffle
-  const handleAutoDistribute = () => {
-    if (activeParticipants.length === 0) {
-      triggerAlert('ผิดพลาด', 'กรุณาเลือกสมาชิกที่จะรับสิทธิ์สุ่มรางวัล');
-      return;
-    }
 
-    const currentSelectedEvent = events.find(e => e.id === selectedEventId);
-    const poolOfPrizes: string[] = [];
-
-    if (currentSelectedEvent && currentSelectedEvent.drops?.length > 0) {
-      currentSelectedEvent.drops.forEach(d => {
-        for (let i = 0; i < d.quantity; i++) {
-          poolOfPrizes.push(d.itemName);
-        }
-      });
-    }
-
-    if (poolOfPrizes.length === 0) {
-      triggerAlert('ผิดพลาด', 'ไม่พบไอเทมประมูลในกิจกรรมที่เลือก กรุณาเพิ่มของรางวัล/ไอเทมก่อนทำการสุ่ม');
-      return;
-    }
-
-    triggerConfirm(
-      'ยืนยันการจับสลากแจกจ่าย',
-      'ยืนยันระบบการสุ่มแจกจ่ายไอเทมทั้งหมดประจำกิจกรรมให้แก่สมาชิกทุกคนที่ติ๊กถูกหรือไม่? สมาชิกจะได้รับไอเทมแบบสุ่มสิทธิ์แบบทันที โดยคำนึงถึงรายชื่ออาชีพและสมาชิกที่ติด Whitelist',
-      () => {
-        const newResults: RaffleResult[] = [];
-        let updatedEvents = [...events];
-
-        if (currentSelectedEvent) {
-          const tempParticipants = [...activeParticipants].sort(() => Math.random() - 0.5);
-          const assignedMemberIds = new Set<string>();
-          const assignedDrops: EventDrop[] = [];
-
-          // Helper to check if a drop should be averaged/split
-          const shouldAverageDrop = (itemName: string) => {
-            const name = itemName.toLowerCase();
-            return name.includes('เศษสมุด') || name.includes('ขนนก') || name.includes('feather') || name.includes('fragment');
-          };
-
-          // Helper to distribute a quantity Q among P participants as evenly as possible.
-          const distributeEvenly = (quantity: number, numParticipants: number): number[] => {
-            if (numParticipants <= 0) return [];
-            const base = Math.floor(quantity / numParticipants);
-            const remainder = quantity % numParticipants;
-            const result: number[] = [];
-            for (let i = 0; i < numParticipants; i++) {
-              result.push(base + (i < remainder ? 1 : 0));
-            }
-            return result;
-          };
-
-          currentSelectedEvent.drops.forEach(drop => {
-            if (drop.assignedToMemberId) {
-              assignedDrops.push(drop);
-              return;
-            }
-
-            if (shouldAverageDrop(drop.itemName) && tempParticipants.length > 0) {
-              // Respect whitelist if present, otherwise distribute to all tempParticipants
-              const whitelistedParticipants = tempParticipants.filter(m => {
-                const matchesClass = !drop.whitelistJobClasses || drop.whitelistJobClasses.length === 0 || drop.whitelistJobClasses.includes(m.jobClass || '');
-                const matchesMember = !drop.whitelistMemberIds || drop.whitelistMemberIds.length === 0 || drop.whitelistMemberIds.includes(m.id);
-                return matchesClass && matchesMember;
-              });
-
-              const targets = whitelistedParticipants.length > 0 ? whitelistedParticipants : tempParticipants;
-              const P = targets.length;
-              const base = Math.floor(drop.quantity / P);
-              const remainder = drop.quantity % P;
-
-              // 1. Assign the base quantity to each matching participant
-              if (base > 0) {
-                targets.forEach(participant => {
-                  const splitDropId = `drop-split-${drop.id}-${participant.id}`;
-                  assignedDrops.push({
-                    ...drop,
-                    id: splitDropId,
-                    quantity: base,
-                    assignedToMemberId: participant.id,
-                    assignedToMemberName: participant.name,
-                    originalDropId: drop.id,
-                    isSplit: true
-                  });
-
-                  newResults.push({
-                    id: `ref-auto-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                    prizeName: `ไอเทม: ${drop.itemName} (x${base} ชิ้น)`,
-                    winnerName: participant.name,
-                    timestamp: new Date().toISOString(),
-                    itemType: 'auto-raffle',
-                    eventId: currentSelectedEvent.id
-                  });
-                });
-              }
-
-              // 2. Keep the remainder as an unassigned drop for bidding/buyout
-              if (remainder > 0) {
-                assignedDrops.push({
-                  ...drop,
-                  id: `drop-remainder-${drop.id}`,
-                  quantity: remainder,
-                  assignedToMemberId: null,
-                  assignedToMemberName: null,
-                  bidAmount: 0,
-                  originalDropId: drop.id,
-                  isSplit: true
-                });
-              }
-            } else {
-              // Normal drop logic (non-averaged items like cards, equipment)
-              // Find candidates who match whitelist and haven't received anything in this batch
-              const candidates = tempParticipants.filter(m => {
-                if (assignedMemberIds.has(m.id)) return false;
-                const matchesClass = !drop.whitelistJobClasses || drop.whitelistJobClasses.length === 0 || drop.whitelistJobClasses.includes(m.jobClass || '');
-                const matchesMember = !drop.whitelistMemberIds || drop.whitelistMemberIds.length === 0 || drop.whitelistMemberIds.includes(m.id);
-                return matchesClass && matchesMember;
-              });
-
-              if (candidates.length > 0) {
-                const winner = candidates[Math.floor(Math.random() * candidates.length)];
-                assignedMemberIds.add(winner.id);
-
-                newResults.push({
-                  id: `ref-auto-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                  prizeName: `ไอเทม: ${drop.itemName}`,
-                  winnerName: winner.name,
-                  timestamp: new Date().toISOString(),
-                  itemType: 'auto-raffle',
-                  eventId: currentSelectedEvent.id
-                });
-
-                assignedDrops.push({
-                  ...drop,
-                  assignedToMemberId: winner.id,
-                  assignedToMemberName: winner.name
-                });
-                return;
-              }
-
-              // Fallback to any active participant matching the whitelist
-              const fallbackCandidates = tempParticipants.filter(m => {
-                const matchesClass = !drop.whitelistJobClasses || drop.whitelistJobClasses.length === 0 || drop.whitelistJobClasses.includes(m.jobClass || '');
-                const matchesMember = !drop.whitelistMemberIds || drop.whitelistMemberIds.length === 0 || drop.whitelistMemberIds.includes(m.id);
-                return matchesClass && matchesMember;
-              });
-
-              if (fallbackCandidates.length > 0) {
-                const winner = fallbackCandidates[Math.floor(Math.random() * fallbackCandidates.length)];
-                assignedMemberIds.add(winner.id);
-
-                newResults.push({
-                  id: `ref-auto-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                  prizeName: `ไอเทม: ${drop.itemName}`,
-                  winnerName: winner.name,
-                  timestamp: new Date().toISOString(),
-                  itemType: 'auto-raffle',
-                  eventId: currentSelectedEvent.id
-                });
-
-                assignedDrops.push({
-                  ...drop,
-                  assignedToMemberId: winner.id,
-                  assignedToMemberName: winner.name
-                });
-                return;
-              }
-
-              // Absolute fallback (no matching whitelisted members, pick any unassigned)
-              const absoluteCandidates = tempParticipants.filter(m => !assignedMemberIds.has(m.id));
-              if (absoluteCandidates.length > 0) {
-                const winner = absoluteCandidates[Math.floor(Math.random() * absoluteCandidates.length)];
-                assignedMemberIds.add(winner.id);
-
-                newResults.push({
-                  id: `ref-auto-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                  prizeName: `ไอเทม: ${drop.itemName}`,
-                  winnerName: winner.name,
-                  timestamp: new Date().toISOString(),
-                  itemType: 'auto-raffle',
-                  eventId: currentSelectedEvent.id
-                });
-
-                assignedDrops.push({
-                  ...drop,
-                  assignedToMemberId: winner.id,
-                  assignedToMemberName: winner.name
-                });
-                return;
-              }
-
-              assignedDrops.push(drop);
-            }
-          });
-
-          updatedEvents = events.map(ev => {
-            if (ev.id === currentSelectedEvent.id) {
-              return {
-                ...ev,
-                drops: assignedDrops
-              };
-            }
-            return ev;
-          });
-
-          // Mark anyone who was assigned a drop as having received their item in this cycle
-          const newAssignedMemberIds = new Set<string>();
-          assignedDrops.forEach(d => {
-            if (d.assignedToMemberId) {
-              newAssignedMemberIds.add(d.assignedToMemberId);
-            }
-          });
-
-          let updatedMembers = members.map(m => {
-            if (newAssignedMemberIds.has(m.id)) {
-              return {
-                ...m,
-                hasReceivedInCycle: true
-              };
-            }
-            return m;
-          });
-
-          // Check if all members have received items. If yes, reset all to false
-          const totalCount = updatedMembers.length;
-          const receivedCount = updatedMembers.filter(m => m.hasReceivedInCycle).length;
-          if (totalCount > 0 && receivedCount === totalCount) {
-            updatedMembers = updatedMembers.map(m => ({ ...m, hasReceivedInCycle: false }));
-          }
-
-          onUpdateState({
-            ...state,
-            raffleResults: [...newResults, ...raffleResults],
-            events: updatedEvents,
-            members: updatedMembers
-          });
-        }
-
-        confetti({
-          particleCount: 220,
-          spread: 120,
-          origin: { y: 0.5 }
-        });
-
-        const discordFields = newResults.map((res, idx) => ({
-          name: `🎁 ไอเทมประมูลที่ ${idx + 1}`,
-          value: `**${res.winnerName}** ได้สิทธิ์รับ **${res.prizeName}**`,
-          inline: false
-        }));
-
-        onSendDiscordNotification(
-          `🤖 ระบบจัดสรรแบ่งปันไอเทมประมูลกิจกรรมสุ่มออโต้กิลด์สำเร็จ!`,
-          `สรุปผลผู้ได้รับสิทธิ์ประจำรอบกิจกรรม ${currentSelectedEvent?.title || ''}`,
-          discordFields,
-          3066993 // Teal
-        );
-      }
-    );
-  };
 
   return (
     <div className="space-y-6" id="wheel-tab">
@@ -1104,31 +882,6 @@ export default function SpinWheel({
         </div>
       </div>
 
-      {/* Mode Switches */}
-      <div className="flex gap-2 border-b border-slate-850 pb-0.5">
-        <button
-          onClick={() => setRaffleMode('wheel')}
-          className={`pb-2 px-4 text-xs sm:text-sm font-extrabold border-b-2 transition-all duration-200 flex items-center gap-1.5 ${
-            raffleMode === 'wheel'
-              ? 'text-blue-400 border-blue-500 font-black'
-              : 'text-slate-400 border-transparent hover:text-slate-200'
-          }`}
-        >
-          <RotateCcw className="w-4 h-4" />
-          วงล้อจัดคิวประมูลสด (Interactive Auction Wheel)
-        </button>
-        <button
-          onClick={() => setRaffleMode('auto')}
-          className={`pb-2 px-4 text-xs sm:text-sm font-extrabold border-b-2 transition-all duration-200 flex items-center gap-1.5 ${
-            raffleMode === 'auto'
-              ? 'text-blue-400 border-blue-500 font-black'
-              : 'text-slate-400 border-transparent hover:text-slate-200'
-          }`}
-        >
-          <Dices className="w-4 h-4" />
-          สุ่มเฉลี่ยรางวัลอัตโนมัติ (Fair Auto-Distribution)
-        </button>
-      </div>
 
       {/* Main Layout Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -1483,14 +1236,13 @@ export default function SpinWheel({
         {/* Right Col: Spinning wheel or Fair auto allocation */}
         <div className="lg:col-span-7 space-y-6">
           
-          {raffleMode === 'wheel' ? (
             /* CLASSIC GLOSSY WHEEL VIEW */
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col items-center justify-center space-y-6 relative overflow-hidden">
               
               {/* Blue glowing ambient ring */}
               <div className="absolute inset-0 bg-gradient-to-b from-blue-500/5 to-transparent pointer-events-none"></div>
 
-                            {/* Active Prize Info Banner (Replaced prize selector with clean display of next target item) */}
+              {/* Active Prize Info Banner (Replaced prize selector with clean display of next target item) */}
               {selectedEventId !== 'all' && (() => {
                 const currentSelectedEvent = events.find(e => e.id === selectedEventId);
                 const unassignedDrop = currentSelectedEvent?.drops?.find(d => !d.assignedToMemberId);
@@ -1612,64 +1364,6 @@ export default function SpinWheel({
               )}
 
             </div>
-          ) : (
-            /* AUTO ALLOCATION RAFFLE VIEW */
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col justify-between space-y-6 relative overflow-hidden">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Dices className="w-5 h-5 text-blue-400" />
-                  <h3 className="font-extrabold text-slate-100 text-sm">สุ่มแบ่งสิทธิ์เฉลี่ยอัตโนมัติ (Fair Allocation Engine)</h3>
-                </div>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  ระบบจะสุ่มแจกจ่ายสิทธิ์รับไอเทมประจำรอบกิจกรรมนี้ทั้งหมดให้แก่ผู้ร่วมกิจกรรมที่คัดกรองไว้ทางซ้ายมือในครั้งเดียวทันที โดยหลีกเลี่ยงการจับโดนคนซ้ำซ้อน เหมาะสำหรับจัดสรรสิทธิ์ผู้ดร็อปวัตถุดิบวอร์ทั่วไปแบบรวดเร็วและยุติธรรมที่สุด
-                </p>
-              </div>
-
-              {/* Visual simulation detail cards */}
-              <div className="bg-slate-950 p-4 rounded-xl border border-slate-850 space-y-3">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="text-slate-400">ของรางวัลรวมทั้งหมดในกิจกรรม:</span>
-                  <span className="font-extrabold text-blue-400 font-mono">
-                    {(() => {
-                      const currentSelectedEvent = events.find(e => e.id === selectedEventId);
-                      return currentSelectedEvent?.drops?.reduce((sum, d) => sum + d.quantity, 0) || 0;
-                    })()} ชิ้น
-                  </span>
-                </div>
-                <div className="flex justify-between items-center text-xs">
-                  <span className="text-slate-400">จำนวนผู้มีสิทธิ์ได้รับการจับสุ่มรอบนี้:</span>
-                  <span className="font-extrabold text-yellow-500 font-mono">
-                    {activeParticipants.length} คน
-                  </span>
-                </div>
-                <div className="border-t border-slate-850 pt-2 flex items-center justify-between text-xs font-bold text-slate-300">
-                  <span>อัตราการได้รับรางวัลเฉลี่ย:</span>
-                  <span className="text-emerald-400 font-mono">
-                    {(() => {
-                      const currentSelectedEvent = events.find(e => e.id === selectedEventId);
-                      const totalQty = currentSelectedEvent?.drops?.reduce((sum, d) => sum + d.quantity, 0) || 0;
-                      return activeParticipants.length > 0 
-                        ? `${Math.min(100, Math.floor((totalQty / activeParticipants.length) * 100))}%` 
-                        : '0%';
-                    })()}
-                  </span>
-                </div>
-              </div>
-
-              <div className="pt-2">
-                <button
-                  onClick={handleAutoDistribute}
-                  disabled={activeParticipants.length === 0 || !(events.find(e => e.id === selectedEventId)?.drops?.length > 0)}
-                  className="w-full bg-blue-600 hover:bg-blue-500 text-white font-extrabold py-3.5 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-lg"
-                  id="auto-dist-btn"
-                >
-                  <Dices className="w-4 h-4" />
-                  สั่งรันการสุ่มเฉลี่ยและแบ่งแจกของรางวัลทันที!
-                </button>
-              </div>
-
-            </div>
-          )}
 
           {/* Audit Logs */}
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-4 shadow-md">
