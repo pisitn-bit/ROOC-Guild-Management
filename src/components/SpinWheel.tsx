@@ -740,7 +740,7 @@ export default function SpinWheel({
         if (isMaterial) {
           const originalQty = unassignedDrop.originalQuantity || unassignedDrop.quantity;
           const P = participants.length;
-          const base = P <= 0 ? 1 : Math.floor(originalQty / P);
+          const base = P <= 0 ? 1 : Math.max(1, Math.floor(originalQty / P));
           spinQty = Math.min(base, unassignedDrop.quantity);
         }
 
@@ -1263,7 +1263,7 @@ export default function SpinWheel({
                 if (shouldAverageDropLocal(unassignedDrop.itemName)) {
                   const originalQty = unassignedDrop.originalQuantity || unassignedDrop.quantity;
                   const P = participants.length;
-                  const base = P <= 0 ? 1 : Math.floor(originalQty / P);
+                  const base = P <= 0 ? 1 : Math.max(1, Math.floor(originalQty / P));
                   spinQty = Math.min(base, unassignedDrop.quantity);
                 }
 
