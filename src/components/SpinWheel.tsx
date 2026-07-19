@@ -603,33 +603,85 @@ export default function SpinWheel({
     let updatedEvents = [...events];
     let updatedMembers = [...members];
 
+    const shouldAverageDrop = (itemName: string) => {
+      const name = itemName.toLowerCase();
+      return name.includes('เศษสมุด') || name.includes('ขนนก') || name.includes('feather') || name.includes('fragment');
+    };
+
     if (selectedEventId !== 'all') {
       const currentSelectedEvent = events.find(e => e.id === selectedEventId);
       const unassignedDrop = currentSelectedEvent?.drops?.find(d => !d.assignedToMemberId);
       
       if (currentSelectedEvent && unassignedDrop) {
-        prizeNameStr = `ไอเทม: ${unassignedDrop.itemName}`;
+        const isMaterial = shouldAverageDrop(unassignedDrop.itemName);
+        
+        let spinQty = 1;
+        if (isMaterial) {
+          const E = activeParticipants.length;
+          const Q = unassignedDrop.quantity;
+          spinQty = E <= 0 ? 1 : E > Q ? 1 : Math.floor(Q / E);
+        } else {
+          spinQty = unassignedDrop.quantity;
+        }
+
+        prizeNameStr = `ไอเทม: ${unassignedDrop.itemName} (x${spinQty} ชิ้น)`;
         
         // Update the drop in the event
         updatedEvents = events.map(ev => {
           if (ev.id === selectedEventId) {
+            const newDrops: EventDrop[] = [];
+            
+            ev.drops.forEach(d => {
+              if (d.id === unassignedDrop.id) {
+                if (spinQty === d.quantity) {
+                  // Assign the whole drop
+                  newDrops.push({
+                    ...d,
+                    assignedToMemberId: wheelWinner.id,
+                    assignedToMemberName: wheelWinner.name
+                  });
+                } else {
+                  // Split it!
+                  newDrops.push({
+                    ...d,
+                    id: `drop-split-${d.id}-${wheelWinner.id}`,
+                    quantity: spinQty,
+                    assignedToMemberId: wheelWinner.id,
+                    assignedToMemberName: wheelWinner.name,
+                    originalDropId: d.id,
+                    isSplit: true
+                  });
+                  newDrops.push({
+                    ...d,
+                    id: `drop-remainder-${d.id}-${Date.now()}`,
+                    quantity: d.quantity - spinQty,
+                    assignedToMemberId: null,
+                    assignedToMemberName: null,
+                    bidAmount: 0,
+                    originalDropId: d.id,
+                    isSplit: true
+                  });
+                }
+              } else {
+                newDrops.push(d);
+              }
+            });
+
             return {
               ...ev,
-              drops: ev.drops.map(d => d.id === unassignedDrop.id ? {
-                ...d,
-                assignedToMemberId: wheelWinner.id,
-                assignedToMemberName: wheelWinner.name
-              } : d)
+              drops: newDrops
             };
           }
           return ev;
         });
 
-        // Mark the member as received in cycle
-        updatedMembers = members.map(m => m.id === wheelWinner.id ? {
-          ...m,
-          hasReceivedInCycle: true
-        } : m);
+        // Mark the member as received in cycle ONLY if it is not a material drop
+        if (!isMaterial) {
+          updatedMembers = members.map(m => m.id === wheelWinner.id ? {
+            ...m,
+            hasReceivedInCycle: true
+          } : m);
+        }
       }
     } else {
       // If no event, just mark hasReceivedInCycle
@@ -1314,11 +1366,26 @@ export default function SpinWheel({
                 const currentSelectedEvent = events.find(e => e.id === selectedEventId);
                 const unassignedDrop = currentSelectedEvent?.drops?.find(d => !d.assignedToMemberId);
                 if (!unassignedDrop) return null;
+
+                const shouldAverageDropLocal = (itemName: string) => {
+                  const name = itemName.toLowerCase();
+                  return name.includes('เศษสมุด') || name.includes('ขนนก') || name.includes('feather') || name.includes('fragment');
+                };
+
+                let spinQty = 1;
+                if (shouldAverageDropLocal(unassignedDrop.itemName)) {
+                  const E = activeParticipants.length;
+                  const Q = unassignedDrop.quantity;
+                  spinQty = E <= 0 ? 1 : E > Q ? 1 : Math.floor(Q / E);
+                } else {
+                  spinQty = unassignedDrop.quantity;
+                }
+
                 return (
                   <div className="w-full max-w-xs text-center p-3 bg-blue-950/20 border border-blue-500/25 rounded-2xl z-10 animate-fade-in">
                     <span className="text-[10px] text-blue-400 font-extrabold uppercase tracking-widest block mb-1">🎁 ไอเทมถัดไปที่จะได้รับการจับสปินสุ่ม:</span>
                     <strong className="text-yellow-500 text-sm font-extrabold flex items-center justify-center gap-1">
-                      🎮 {unassignedDrop.itemName} (x1 ชิ้น)
+                      🎮 {unassignedDrop.itemName} (x{spinQty} ชิ้น)
                     </strong>
                   </div>
                 );
