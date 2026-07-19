@@ -187,8 +187,13 @@ export default function SpinWheel({
       () => {
         // Reconstruct the original drops (re-merging any split drops)
         const originalDropsMap = new Map<string, EventDrop>();
+        const assignedMemberIdsToReset = new Set<string>();
 
         activeEvent.drops.forEach(drop => {
+          if (drop.assignedToMemberId) {
+            assignedMemberIdsToReset.add(drop.assignedToMemberId);
+          }
+
           if (drop.isSplit && drop.originalDropId) {
             const existing = originalDropsMap.get(drop.originalDropId);
             if (existing) {
@@ -229,6 +234,17 @@ export default function SpinWheel({
           return ev;
         });
 
+        // Reset the members' hasReceivedInCycle status
+        const updatedMembers = members.map(m => {
+          if (assignedMemberIdsToReset.has(m.id)) {
+            return {
+              ...m,
+              hasReceivedInCycle: false
+            };
+          }
+          return m;
+        });
+
         // Clean up raffle results associated with this event
         const updatedRaffleResults = raffleResults.filter(res => {
           // If the result is linked to this event, filter it out
@@ -248,6 +264,7 @@ export default function SpinWheel({
         onUpdateState({
           ...state,
           events: updatedEvents,
+          members: updatedMembers,
           raffleResults: updatedRaffleResults
         });
 
@@ -265,15 +282,65 @@ export default function SpinWheel({
 
   // Manually delete a single raffle result from the audit trail
   const handleDeleteRaffleResult = (resultId: string) => {
+    const resultToDelete = raffleResults.find(res => res.id === resultId);
+    if (!resultToDelete) return;
+
     triggerConfirm(
       'ลบประวัติการรับรางวัล',
-      'คุณแน่ใจหรือไม่ว่าต้องการลบประวัติการรับรางวัลรายการนี้ออกจากตาราง?',
+      `คุณแน่ใจหรือไม่ว่าต้องการลบประวัติการรับรางวัลของ "${resultToDelete.winnerName}" รายการนี้ออกจากตาราง? ระบบจะคืนสิทธิ์คิวประมูลให้สมาชิกท่านนี้ด้วย`,
       () => {
         const updatedResults = raffleResults.filter(res => res.id !== resultId);
+
+        // Find the member by name and set hasReceivedInCycle to false
+        const updatedMembers = members.map(m => {
+          if (m.name === resultToDelete.winnerName) {
+            return {
+              ...m,
+              hasReceivedInCycle: false
+            };
+          }
+          return m;
+        });
+
+        // Also check if this raffle result matches any drop in the active event, and if so, unassign it!
+        let updatedEvents = [...events];
+        if (selectedEventId !== 'all') {
+          updatedEvents = events.map(ev => {
+            if (ev.id === selectedEventId) {
+              return {
+                ...ev,
+                drops: ev.drops.map(d => {
+                  const nameToMatch = d.itemName.replace(/\s+/g, '').toLowerCase();
+                  const prizeToMatch = resultToDelete.prizeName.replace(/\s+/g, '').toLowerCase();
+                  const isMatchingPrize = prizeToMatch.includes(nameToMatch) || nameToMatch.includes(prizeToMatch);
+                  
+                  const member = members.find(m => m.name === resultToDelete.winnerName);
+                  const isMatchingWinner = d.assignedToMemberId === member?.id;
+
+                  if (isMatchingPrize && isMatchingWinner) {
+                    return {
+                      ...d,
+                      assignedToMemberId: null,
+                      assignedToMemberName: null,
+                      bidAmount: 0
+                    };
+                  }
+                  return d;
+                })
+              };
+            }
+            return ev;
+          });
+        }
+
         onUpdateState({
           ...state,
-          raffleResults: updatedResults
+          raffleResults: updatedResults,
+          members: updatedMembers,
+          events: updatedEvents
         });
+
+        triggerAlert('สำเร็จ', `ลบประวัติและคืนสิทธิ์คิวของ "${resultToDelete.winnerName}" เรียบร้อยแล้ว`);
       }
     );
   };
