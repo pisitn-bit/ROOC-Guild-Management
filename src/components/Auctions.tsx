@@ -499,11 +499,11 @@ export default function Auctions({
     // Notify Discord
     onSendDiscordNotification(
       `🚩 สมาชิกแจ้งขอลาเข้าร่วมกิจกรรม`,
-      `**${currentUser.name}** ได้แจ้งขอลาจากกิจกรรม **${event.title}**`,
+      `**${currentUser.name}** ได้แจ้งขอลาจากกิจกรรม **${event.title} ประจำวันที่ ${event.date}**`,
       [
         { name: 'ชื่อสมาชิก', value: currentUser.name, inline: true },
         { name: 'อาชีพ', value: currentUser.jobClass || 'ไม่ระบุ', inline: true },
-        { name: 'กิจกรรมกิลด์', value: event.title, inline: false },
+        { name: 'กิจกรรมกิลด์', value: `${event.title} ประจำวันที่ ${event.date}`, inline: false },
         { name: 'เหตุผลในการขอลา', value: reason.trim(), inline: false }
       ],
       15158332, // Red-ish color
@@ -1019,7 +1019,7 @@ export default function Auctions({
             <div>
               <h2 className="text-xl font-extrabold text-slate-100 flex items-center gap-2">
                 <Calendar className="text-blue-500 w-6 h-6" />
-                รอบกิจกรรมประมูล (Guild Match & Boss OverRun)
+                รอบกิจกรรม (Guild Match & Boss OverRun)
               </h2>
               <p className="text-xs text-slate-400">
                 รายชื่อรอบวอร์ บอส และสถิติผู้ดรอปประมูลไอเทมต่างๆ ผูกกับกิจกรรมรายวันของกิลด์
@@ -1220,6 +1220,27 @@ export default function Auctions({
 
                       {/* Header Actions */}
                       <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+                        {isAdmin && (
+                          <button
+                            onClick={() => {
+                              onSendDiscordNotification(
+                                `📢 ประกาศกิจกรรมกิลด์: ${event.title}`,
+                                `กิจกรรม: ${event.type === 'league' ? '🛡️ Guild League' : '🔥 OverRun'}\nวันที่: ${event.date}\n\nขอเชิญชวนสมาชิกกิลด์ทุกคนล็อกอินเข้ามากด "เข้าร่วมกิจกรรม" เพื่อรักษาสิทธิ์ของตนเองในวงล้อและคิวประมูลไอเทม!`,
+                                event.drops && event.drops.length > 0
+                                  ? event.drops.map(d => ({ name: d.itemName, value: `จำนวน: ${d.quantity} ชิ้น (รอประมูล)`, inline: true }))
+                                  : [{ name: "💎 ไอเทมดรอป", value: "ไม่มีรายการไอเทมประมูลในรอบนี้", inline: false }],
+                                3066993, // Teal color
+                                undefined,
+                                'events'
+                              );
+                              showAlert?.('สำเร็จ', 'ส่งประกาศความเคลื่อนไหวกิจกรรมกิลด์ไปยังห้องประกาศบอท Discord เรียบร้อยแล้ว!');
+                            }}
+                            className="bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-500/20 font-extrabold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-sm"
+                            title="ประกาศกิจกรรมไปยัง Discord"
+                          >
+                            📢 ประกาศห้องบอร์ดกิลด์
+                          </button>
+                        )}
                         {isActive && currentUser && (() => {
                           const hasExcusedObj = event.excuses?.find(exc => exc.memberId === currentUser.id);
                           const { canExcuse, deadlineStr } = checkCanExcuse(event.date);
@@ -1734,7 +1755,7 @@ export default function Auctions({
               จัดการฐานข้อมูลหลักไอเทม (Master Items Configuration)
             </h2>
             <p className="text-xs text-slate-400">
-              ฐานข้อมูลรายการไอเทมเริ่มต้นที่จะนำมาใช้ระบุในแต่ละรอบกิจกรรมประมูล
+              ฐานข้อมูลรายการไอเทมเริ่มต้นที่จะนำมาใช้ระบุในแต่ละรอบกิจกรรม
             </p>
           </div>
 
