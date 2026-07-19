@@ -69,6 +69,9 @@ export interface DiscordConfig {
   webhookUrl: string;
   botName: string;
   enabled: boolean;
+  webhookUrlLeaves?: string;
+  webhookUrlEvents?: string;
+  webhookUrlRaffles?: string;
 }
 
 export interface GuildState {

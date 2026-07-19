@@ -26,8 +26,11 @@ export default function DiscordSettings({
   onSendDiscordNotification,
   showAlert 
 }: DiscordSettingsProps) {
-  const [webhookUrl, setWebhookUrl] = useState(state.discordConfig.webhookUrl);
-  const [botName, setBotName] = useState(state.discordConfig.botName);
+  const [webhookUrl, setWebhookUrl] = useState(state.discordConfig.webhookUrl || '');
+  const [webhookUrlLeaves, setWebhookUrlLeaves] = useState(state.discordConfig.webhookUrlLeaves || '');
+  const [webhookUrlEvents, setWebhookUrlEvents] = useState(state.discordConfig.webhookUrlEvents || '');
+  const [webhookUrlRaffles, setWebhookUrlRaffles] = useState(state.discordConfig.webhookUrlRaffles || '');
+  const [botName, setBotName] = useState(state.discordConfig.botName || '');
   const [enabled, setEnabled] = useState(state.discordConfig.enabled);
 
   const [showWebhook, setShowWebhook] = useState(false);
@@ -48,6 +51,9 @@ export default function DiscordSettings({
       ...state,
       discordConfig: {
         webhookUrl: webhookUrl.trim(),
+        webhookUrlLeaves: webhookUrlLeaves.trim(),
+        webhookUrlEvents: webhookUrlEvents.trim(),
+        webhookUrlRaffles: webhookUrlRaffles.trim(),
         botName: botName.trim(),
         enabled
       }
@@ -57,57 +63,64 @@ export default function DiscordSettings({
 
   // 2. Test sending notification
   const handleTestNotification = async () => {
-    if (!webhookUrl.trim() && enabled) {
-      triggerAlert('คำเตือน', 'กรุณากรอก Webhook URL ก่อนทดสอบส่ง');
+    const urlsToTest = [
+      { name: 'ประกาศทั่วไป/ดีฟอลต์ (Default)', url: webhookUrl, type: 'default' },
+      { name: 'การแจ้งเตือนขอแจ้งลา (Leaves)', url: webhookUrlLeaves, type: 'leaves' },
+      { name: 'การประกาศกิจกรรม (Events)', url: webhookUrlEvents, type: 'events' },
+      { name: 'ผลการสุ่มวงล้อ/ประมูล (Raffles)', url: webhookUrlRaffles, type: 'raffles' }
+    ].filter(item => item.url.trim() !== '');
+
+    if (urlsToTest.length === 0) {
+      triggerAlert('คำเตือน', 'กรุณากรอก Webhook URL อย่างน้อยหนึ่งช่องทางก่อนทดสอบส่ง');
       return;
     }
 
     setIsTesting(true);
     setTestStatus({ type: null, message: '' });
 
-    try {
-      const response = await fetch("/api/discord-notify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: "🧪 ทดสอบระบบการเชื่อมต่อบอทกิลด์ RO Classic",
-          message: "นี่คือข้อความทดสอบจากระบบจัดการกิลด์ Ragnarok Origin Classic ของคุณ เพื่อยืนยันว่าการทำงานของ Webhook สมบูรณ์ดี !",
-          fields: [
-            { name: "📡 สถานะการทดสอบ", value: "✅ เชื่อมต่อสำเร็จเรียบร้อยดี", inline: true },
-            { name: "🛠️ ผู้รับสิทธิ์ทดสอบ", value: botName || "บอทกิลด์", inline: true }
-          ],
-          color: 3066993, // Green
-          webhookUrlOverride: webhookUrl.trim() // Override with unsaved inputs
-        })
-      });
+    let successCount = 0;
+    const errors: string[] = [];
 
-      const data = await response.json();
-      if (data.success) {
-        if (data.simulated) {
-          setTestStatus({
-            type: 'success',
-            message: `จำลองการส่งข้อมูลสำเร็จ (ไม่ได้กรอก Webhook): ${data.message}`
-          });
-        } else {
-          setTestStatus({
-            type: 'success',
-            message: 'ส่งทดสอบไปยัง Discord Channel ของคุณเรียบร้อยแล้ว ! กรุณาตรวจสอบห้องแชท'
-          });
-        }
-      } else {
-        setTestStatus({
-          type: 'error',
-          message: `ล้มเหลว: ${data.message}`
+    for (const test of urlsToTest) {
+      try {
+        const response = await fetch("/api/discord-notify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: `🧪 ทดสอบการเชื่อมต่อ: ${test.name}`,
+            message: `บอทกิลด์ RO Classic เชื่อมต่อผ่าน Webhook สำเร็จเรียบร้อยดี! ข้อความนี้ส่งไปยังช่อง ${test.name}`,
+            fields: [
+              { name: "📡 ประเภทช่องทาง", value: `ห้อง ${test.name}`, inline: true },
+              { name: "🛠️ ผู้รับสิทธิ์ทดสอบ", value: botName || "บอทกิลด์", inline: true }
+            ],
+            color: 3066993, // Green
+            webhookUrlOverride: test.url.trim()
+          })
         });
+
+        const data = await response.json();
+        if (data.success) {
+          successCount++;
+        } else {
+          errors.push(`${test.name}: ${data.message}`);
+        }
+      } catch (e: any) {
+        errors.push(`${test.name}: ${e?.message || e}`);
       }
-    } catch (e: any) {
+    }
+
+    if (errors.length === 0) {
+      setTestStatus({
+        type: 'success',
+        message: `ส่งข้อความทดสอบไปยัง Discord (${successCount} ช่องทาง) สำเร็จเรียบร้อยดี!`
+      });
+    } else {
       setTestStatus({
         type: 'error',
-        message: `ข้อผิดพลาดเครือข่าย: ${e?.message || e}`
+        message: `ส่งสำเร็จ ${successCount} ช่องทาง, ล้มเหลว ${errors.length} ช่องทาง:\n${errors.join('\n')}`
       });
-    } finally {
-      setIsTesting(false);
     }
+    setIsTesting(false);
   };
 
   return (
@@ -149,11 +162,14 @@ export default function DiscordSettings({
               />
             </div>
 
-            {/* Webhook URL Input */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-400 block">Discord Webhook URL</label>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
+            {/* Webhook URLs Input Block */}
+            <div className="space-y-3.5">
+              
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-slate-300 flex items-center gap-1">
+                  🌐 Webhook URL หลัก (Default / Fallback ช่องทางหลัก)
+                </label>
+                <div className="relative">
                   <input
                     type={showWebhook ? "text" : "password"}
                     disabled={!isAdmin}
@@ -171,6 +187,49 @@ export default function DiscordSettings({
                   </button>
                 </div>
               </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-slate-300 flex items-center gap-1">
+                  🚗 Webhook URL สำหรับการแจ้งขอลา (Leaves Channel)
+                </label>
+                <input
+                  type={showWebhook ? "text" : "password"}
+                  disabled={!isAdmin}
+                  placeholder="หากเว้นว่างไว้จะส่งเข้าช่องทางหลัก"
+                  value={webhookUrlLeaves}
+                  onChange={e => setWebhookUrlLeaves(e.target.value)}
+                  className="w-full bg-slate-950 text-slate-200 px-3 py-2.5 rounded-xl border border-slate-800 focus:outline-none focus:border-blue-500 font-mono text-xs"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-slate-300 flex items-center gap-1">
+                  📢 Webhook URL สำหรับการประกาศกิจกรรมกิลด์ (Events Channel)
+                </label>
+                <input
+                  type={showWebhook ? "text" : "password"}
+                  disabled={!isAdmin}
+                  placeholder="หากเว้นว่างไว้จะส่งเข้าช่องทางหลัก"
+                  value={webhookUrlEvents}
+                  onChange={e => setWebhookUrlEvents(e.target.value)}
+                  className="w-full bg-slate-950 text-slate-200 px-3 py-2.5 rounded-xl border border-slate-800 focus:outline-none focus:border-blue-500 font-mono text-xs"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-slate-300 flex items-center gap-1">
+                  🏆 Webhook URL สำหรับผลการสุ่ม/ประมูล (Raffle & Spin Wheel Results)
+                </label>
+                <input
+                  type={showWebhook ? "text" : "password"}
+                  disabled={!isAdmin}
+                  placeholder="หากเว้นว่างไว้จะส่งเข้าช่องทางหลัก"
+                  value={webhookUrlRaffles}
+                  onChange={e => setWebhookUrlRaffles(e.target.value)}
+                  className="w-full bg-slate-950 text-slate-200 px-3 py-2.5 rounded-xl border border-slate-800 focus:outline-none focus:border-blue-500 font-mono text-xs"
+                />
+              </div>
+
             </div>
 
             {/* Bot Name Input */}

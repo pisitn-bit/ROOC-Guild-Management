@@ -81,6 +81,9 @@
   "raffleResults": [],
   "discordConfig": {
     "webhookUrl": "https://discord.com/api/webhooks/1528262178048839770/kCMNimjdyyMy0g3_TKgFGoW3foT2Rd5kzMF2RR--CV8lEkH-p-40oADiD-FDIwbDy5iY",
+    "webhookUrlLeaves": "",
+    "webhookUrlEvents": "",
+    "webhookUrlRaffles": "",
     "botName": "บอทกิลด์ RO Classic",
     "enabled": true
   },

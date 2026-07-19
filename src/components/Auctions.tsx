@@ -32,7 +32,7 @@ interface AuctionsProps {
   currentUser: Member | null;
   isAdmin: boolean;
   onUpdateState: (newState: GuildState) => void;
-  onSendDiscordNotification: (title: string, message: string, fields: any[], color?: number, content?: string) => void;
+  onSendDiscordNotification: (title: string, message: string, fields: any[], color?: number, content?: string, webhookType?: 'leaves' | 'events' | 'raffles') => void;
   showAlert?: (title: string, message: string) => void;
   showConfirm?: (title: string, message: string, onConfirm: () => void) => void;
 }
@@ -293,14 +293,16 @@ export default function Auctions({
     });
 
     onSendDiscordNotification(
-      `🎡 หมุนวงล้อสุ่มสิทธิ์ไอเทมสำเร็จ!`,
+      `🎡 หมุนวงล้อสิทธิ์ไอเทมสำเร็จ!`,
       `สรุปผลผู้ได้รับสิทธิ์ประมูลจากการหมุนวงล้อนำโชค`,
       [
         { name: "🎁 ไอเทมดรอป", value: `**${activeWheelDropName}**`, inline: true },
         { name: "🌟 ผู้ชนะสิทธิ์", value: `**${dropWheelWinner.name}** (${dropWheelWinner.participatedWarsCount} วอร์)`, inline: true },
         { name: "📌 กิจกรรม", value: events.find(e => e.id === activeWheelEventId)?.title || 'กิจกรรมสมาคม', inline: false }
       ],
-      15105570
+      15105570,
+      undefined,
+      'raffles'
     );
 
     setIsDropWheelOpen(false);
@@ -352,7 +354,9 @@ export default function Auctions({
       drops.length > 0
         ? drops.map(d => ({ name: d.itemName, value: `จำนวน: ${d.quantity} ชิ้น (รอประมูล)`, inline: true }))
         : [{ name: "💎 ไอเทมดรอป", value: "ไม่มีรายการไอเทมประมูลในรอบนี้", inline: false }],
-      3066993 // Teal color
+      3066993, // Teal color
+      undefined,
+      'events'
     );
 
     // Reset Form
@@ -502,7 +506,9 @@ export default function Auctions({
         { name: 'กิจกรรมกิลด์', value: event.title, inline: false },
         { name: 'เหตุผลในการขอลา', value: reason.trim(), inline: false }
       ],
-      15158332 // Red-ish color
+      15158332, // Red-ish color
+      undefined,
+      'leaves'
     );
 
     setExcuseEventId(null);
@@ -874,7 +880,9 @@ export default function Auctions({
           value: `ผู้ได้รับ: **${d.assignedToMemberName}**\nราคาประมูล: \`${d.bidAmount.toLocaleString()} Zeny\``,
           inline: false
         })),
-        4081152 // Green color
+        4081152, // Green color
+        undefined,
+        'raffles'
       );
     };
 

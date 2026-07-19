@@ -29,7 +29,7 @@ interface SpinWheelProps {
   currentUser: Member | null;
   isAdmin: boolean;
   onUpdateState: (newState: GuildState) => void;
-  onSendDiscordNotification: (title: string, message: string, fields: any[], color: number, content?: string) => void;
+  onSendDiscordNotification: (title: string, message: string, fields: any[], color: number, content?: string, webhookType?: 'leaves' | 'events' | 'raffles') => void;
   showAlert?: (title: string, message: string) => void;
   showConfirm?: (title: string, message: string, onConfirm: () => void) => void;
 }
@@ -272,7 +272,9 @@ export default function SpinWheel({
           `🔄 รีเซ็ตและล้างผลการประมูลกิลด์รอบนี้`,
           `ผู้ดูแลระบบได้ทำการล้างผลการจัดสรรและประมูลของรางวัลทั้งหมดประจำรอบกิจกรรม **${activeEvent.title}** เรียบร้อยแล้ว เพื่อเตรียมการจัดสรรใหม่`,
           [],
-          15158332 // Red-ish
+          15158332, // Red-ish
+          undefined,
+          'events'
         );
 
         triggerAlert('สำเร็จ', 'ล้างผลการประมูลและการจัดสรรของรางวัลรอบนี้ทั้งหมดเรียบร้อยแล้ว');
@@ -437,7 +439,8 @@ export default function SpinWheel({
       `ประกาศผลกิจกรรม ${activeEvent.title}`,
       [],
       3066993, // Teal/Green
-      rawContent // Content parameter!
+      rawContent, // Content parameter!
+      'events'
     );
 
     triggerAlert('สำเร็จ', 'ส่งประกาศสรุปผลกิจกรรมไปยัง Discord เรียบร้อยแล้วครับ!');
@@ -834,7 +837,9 @@ export default function SpinWheel({
         { name: "🎁 ของรางวัลที่สุ่มได้", value: prizeNameStr, inline: true },
         { name: "📌 แหล่งรายชื่อที่ดึงมา", value: selectedEventId === 'all' ? "สมาชิกกิลด์ทั้งหมด" : events.find(e => e.id === selectedEventId)?.title || 'กิจกรรมสมาคม', inline: false }
       ],
-      9442302 // Purple/Pink
+      9442302, // Purple/Pink
+      undefined,
+      'raffles'
     );
 
     setWheelWinner(null);

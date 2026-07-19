@@ -787,9 +787,22 @@ app.use(express.json());
 
   // API 3: Dispatch notification to Discord webhook
   app.post("/api/discord-notify", async (req, res) => {
-    const { title, message, fields, color, webhookUrlOverride } = req.body;
-    const webhookUrl = webhookUrlOverride || state.discordConfig.webhookUrl;
-    const enabled = webhookUrlOverride ? true : state.discordConfig.enabled;
+    const { title, message, fields, color, webhookUrlOverride, webhookType } = req.body;
+    
+    let webhookUrl = webhookUrlOverride;
+    if (!webhookUrl) {
+      if (webhookType === "leaves") {
+        webhookUrl = state.discordConfig.webhookUrlLeaves || state.discordConfig.webhookUrl;
+      } else if (webhookType === "events") {
+        webhookUrl = state.discordConfig.webhookUrlEvents || state.discordConfig.webhookUrl;
+      } else if (webhookType === "raffles") {
+        webhookUrl = state.discordConfig.webhookUrlRaffles || state.discordConfig.webhookUrl;
+      } else {
+        webhookUrl = state.discordConfig.webhookUrl;
+      }
+    }
+    
+    const enabled = (webhookUrlOverride || webhookType) ? true : state.discordConfig.enabled;
     const botName = state.discordConfig.botName || "RO Classic Guild Bot";
 
     console.log(`[Discord Bot Log]: "${title}" - ${message}`);

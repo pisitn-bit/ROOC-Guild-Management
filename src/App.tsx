@@ -207,12 +207,19 @@ export default function App() {
   };
 
   // 3. Helper to dispatch Discord Notification
-  const sendDiscordNotification = async (title: string, message: string, fields: any[] = [], color = 15844367, content?: string) => {
+  const sendDiscordNotification = async (
+    title: string, 
+    message: string, 
+    fields: any[] = [], 
+    color = 15844367, 
+    content?: string,
+    webhookType?: 'leaves' | 'events' | 'raffles'
+  ) => {
     try {
       const response = await fetch('/api/discord-notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, message, fields, color, content })
+        body: JSON.stringify({ title, message, fields, color, content, webhookType })
       });
       const data = await response.json();
       console.log('Discord notify result:', data);
