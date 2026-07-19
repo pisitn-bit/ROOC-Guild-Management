@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { GuildState, Member, RafflePrize, RaffleResult, GuildEvent, DEFAULT_JOB_CLASSES } from '../types';
+import { GuildState, Member, RafflePrize, RaffleResult, GuildEvent, EventDrop, DEFAULT_JOB_CLASSES } from '../types';
 import { 
   Gift, 
   Users, 
@@ -532,85 +532,145 @@ export default function SpinWheel({
         if (currentSelectedEvent) {
           const tempParticipants = [...activeParticipants].sort(() => Math.random() - 0.5);
           const assignedMemberIds = new Set<string>();
+          const assignedDrops: EventDrop[] = [];
 
-          const assignedDrops = currentSelectedEvent.drops.map(drop => {
-            if (drop.assignedToMemberId) return drop;
+          // Helper to check if a drop should be averaged/split
+          const shouldAverageDrop = (itemName: string) => {
+            const name = itemName.toLowerCase();
+            return name.includes('เศษสมุด') || name.includes('ขนนก') || name.includes('feather') || name.includes('fragment');
+          };
 
-            // Find candidates who match whitelist and haven't received anything in this batch
-            const candidates = tempParticipants.filter(m => {
-              if (assignedMemberIds.has(m.id)) return false;
-              const matchesClass = !drop.whitelistJobClasses || drop.whitelistJobClasses.length === 0 || drop.whitelistJobClasses.includes(m.jobClass || '');
-              const matchesMember = !drop.whitelistMemberIds || drop.whitelistMemberIds.length === 0 || drop.whitelistMemberIds.includes(m.id);
-              return matchesClass && matchesMember;
-            });
+          // Helper to distribute a quantity Q among P participants as evenly as possible.
+          const distributeEvenly = (quantity: number, numParticipants: number): number[] => {
+            if (numParticipants <= 0) return [];
+            const base = Math.floor(quantity / numParticipants);
+            const remainder = quantity % numParticipants;
+            const result: number[] = [];
+            for (let i = 0; i < numParticipants; i++) {
+              result.push(base + (i < remainder ? 1 : 0));
+            }
+            return result;
+          };
 
-            if (candidates.length > 0) {
-              const winner = candidates[Math.floor(Math.random() * candidates.length)];
-              assignedMemberIds.add(winner.id);
-
-              newResults.push({
-                id: `ref-auto-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                prizeName: `ไอเทม: ${drop.itemName}`,
-                winnerName: winner.name,
-                timestamp: new Date().toISOString(),
-                itemType: 'auto-raffle'
-              });
-
-              return {
-                ...drop,
-                assignedToMemberId: winner.id,
-                assignedToMemberName: winner.name
-              };
+          currentSelectedEvent.drops.forEach(drop => {
+            if (drop.assignedToMemberId) {
+              assignedDrops.push(drop);
+              return;
             }
 
-            // Fallback to any active participant matching the whitelist
-            const fallbackCandidates = tempParticipants.filter(m => {
-              const matchesClass = !drop.whitelistJobClasses || drop.whitelistJobClasses.length === 0 || drop.whitelistJobClasses.includes(m.jobClass || '');
-              const matchesMember = !drop.whitelistMemberIds || drop.whitelistMemberIds.length === 0 || drop.whitelistMemberIds.includes(m.id);
-              return matchesClass && matchesMember;
-            });
-
-            if (fallbackCandidates.length > 0) {
-              const winner = fallbackCandidates[Math.floor(Math.random() * fallbackCandidates.length)];
-              assignedMemberIds.add(winner.id);
-
-              newResults.push({
-                id: `ref-auto-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                prizeName: `ไอเทม: ${drop.itemName}`,
-                winnerName: winner.name,
-                timestamp: new Date().toISOString(),
-                itemType: 'auto-raffle'
+            if (shouldAverageDrop(drop.itemName) && tempParticipants.length > 0) {
+              // Respect whitelist if present, otherwise distribute to all tempParticipants
+              const whitelistedParticipants = tempParticipants.filter(m => {
+                const matchesClass = !drop.whitelistJobClasses || drop.whitelistJobClasses.length === 0 || drop.whitelistJobClasses.includes(m.jobClass || '');
+                const matchesMember = !drop.whitelistMemberIds || drop.whitelistMemberIds.length === 0 || drop.whitelistMemberIds.includes(m.id);
+                return matchesClass && matchesMember;
               });
 
-              return {
-                ...drop,
-                assignedToMemberId: winner.id,
-                assignedToMemberName: winner.name
-              };
-            }
+              const targets = whitelistedParticipants.length > 0 ? whitelistedParticipants : tempParticipants;
+              const quantities = distributeEvenly(drop.quantity, targets.length);
 
-            // Absolute fallback (no matching whitelisted members, pick any unassigned)
-            const absoluteCandidates = tempParticipants.filter(m => !assignedMemberIds.has(m.id));
-            if (absoluteCandidates.length > 0) {
-              const winner = absoluteCandidates[Math.floor(Math.random() * absoluteCandidates.length)];
-              assignedMemberIds.add(winner.id);
+              targets.forEach((participant, idx) => {
+                const qty = quantities[idx];
+                if (qty > 0) {
+                  const splitDropId = `drop-split-${drop.id}-${participant.id}`;
+                  assignedDrops.push({
+                    ...drop,
+                    id: splitDropId,
+                    quantity: qty,
+                    assignedToMemberId: participant.id,
+                    assignedToMemberName: participant.name
+                  });
 
-              newResults.push({
-                id: `ref-auto-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                prizeName: `ไอเทม: ${drop.itemName}`,
-                winnerName: winner.name,
-                timestamp: new Date().toISOString(),
-                itemType: 'auto-raffle'
+                  newResults.push({
+                    id: `ref-auto-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                    prizeName: `ไอเทม: ${drop.itemName} (x${qty} ชิ้น)`,
+                    winnerName: participant.name,
+                    timestamp: new Date().toISOString(),
+                    itemType: 'auto-raffle'
+                  });
+                }
+              });
+            } else {
+              // Normal drop logic (non-averaged items like cards, equipment)
+              // Find candidates who match whitelist and haven't received anything in this batch
+              const candidates = tempParticipants.filter(m => {
+                if (assignedMemberIds.has(m.id)) return false;
+                const matchesClass = !drop.whitelistJobClasses || drop.whitelistJobClasses.length === 0 || drop.whitelistJobClasses.includes(m.jobClass || '');
+                const matchesMember = !drop.whitelistMemberIds || drop.whitelistMemberIds.length === 0 || drop.whitelistMemberIds.includes(m.id);
+                return matchesClass && matchesMember;
               });
 
-              return {
-                ...drop,
-                assignedToMemberId: winner.id,
-                assignedToMemberName: winner.name
-              };
-            }
+              if (candidates.length > 0) {
+                const winner = candidates[Math.floor(Math.random() * candidates.length)];
+                assignedMemberIds.add(winner.id);
 
-            return drop;
+                newResults.push({
+                  id: `ref-auto-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                  prizeName: `ไอเทม: ${drop.itemName}`,
+                  winnerName: winner.name,
+                  timestamp: new Date().toISOString(),
+                  itemType: 'auto-raffle'
+                });
+
+                assignedDrops.push({
+                  ...drop,
+                  assignedToMemberId: winner.id,
+                  assignedToMemberName: winner.name
+                });
+                return;
+              }
+
+              // Fallback to any active participant matching the whitelist
+              const fallbackCandidates = tempParticipants.filter(m => {
+                const matchesClass = !drop.whitelistJobClasses || drop.whitelistJobClasses.length === 0 || drop.whitelistJobClasses.includes(m.jobClass || '');
+                const matchesMember = !drop.whitelistMemberIds || drop.whitelistMemberIds.length === 0 || drop.whitelistMemberIds.includes(m.id);
+                return matchesClass && matchesMember;
+              });
+
+              if (fallbackCandidates.length > 0) {
+                const winner = fallbackCandidates[Math.floor(Math.random() * fallbackCandidates.length)];
+                assignedMemberIds.add(winner.id);
+
+                newResults.push({
+                  id: `ref-auto-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                  prizeName: `ไอเทม: ${drop.itemName}`,
+                  winnerName: winner.name,
+                  timestamp: new Date().toISOString(),
+                  itemType: 'auto-raffle'
+                });
+
+                assignedDrops.push({
+                  ...drop,
+                  assignedToMemberId: winner.id,
+                  assignedToMemberName: winner.name
+                });
+                return;
+              }
+
+              // Absolute fallback (no matching whitelisted members, pick any unassigned)
+              const absoluteCandidates = tempParticipants.filter(m => !assignedMemberIds.has(m.id));
+              if (absoluteCandidates.length > 0) {
+                const winner = absoluteCandidates[Math.floor(Math.random() * absoluteCandidates.length)];
+                assignedMemberIds.add(winner.id);
+
+                newResults.push({
+                  id: `ref-auto-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                  prizeName: `ไอเทม: ${drop.itemName}`,
+                  winnerName: winner.name,
+                  timestamp: new Date().toISOString(),
+                  itemType: 'auto-raffle'
+                });
+
+                assignedDrops.push({
+                  ...drop,
+                  assignedToMemberId: winner.id,
+                  assignedToMemberName: winner.name
+                });
+                return;
+              }
+
+              assignedDrops.push(drop);
+            }
           });
 
           updatedEvents = events.map(ev => {

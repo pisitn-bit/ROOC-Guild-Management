@@ -601,10 +601,8 @@ export default function Auctions({
     }
 
     let tempMembers = JSON.parse(JSON.stringify(members)) as Member[];
-    let updatedDrops = JSON.parse(JSON.stringify(event.drops)) as EventDrop[];
-
-    // We only allocate to active participants of this specific event!
-    // And out of those participants, we prefer those with hasReceivedInCycle === false.
+    const originalDrops = event.drops || [];
+    const finalDrops: EventDrop[] = [];
     let changed = false;
 
     // Helper to get participant job class for this specific event
@@ -612,95 +610,157 @@ export default function Auctions({
       return event.participantClasses?.[m.id] || m.jobClass || 'Lord Knight';
     };
 
-    for (let d of updatedDrops) {
-      if (d.assignedToMemberId) continue; // Skip already assigned drops
+    // Helper to check if a drop should be averaged/split
+    const shouldAverageDrop = (itemName: string) => {
+      const name = itemName.toLowerCase();
+      return name.includes('เศษสมุด') || name.includes('ขนนก') || name.includes('feather') || name.includes('fragment');
+    };
 
-      // Find participants of this event
-      const eventParticipantIds = event.participants;
+    // Helper to distribute a quantity Q among P participants as evenly as possible.
+    const distributeEvenly = (quantity: number, numParticipants: number): number[] => {
+      if (numParticipants <= 0) return [];
+      const base = Math.floor(quantity / numParticipants);
+      const remainder = quantity % numParticipants;
+      const result: number[] = [];
+      for (let i = 0; i < numParticipants; i++) {
+        result.push(base + (i < remainder ? 1 : 0));
+      }
+      return result;
+    };
 
-      // Count unassigned drops
-      const unassignedDropsCount = updatedDrops.filter(dr => !dr.assignedToMemberId).length;
-
-      // Count clean participants (participants who haven't received items in this cycle and match filters)
-      const cleanParticipantsCount = tempMembers.filter(m => {
-        const isParticipant = eventParticipantIds.includes(m.id);
-        const hasNotReceived = !m.hasReceivedInCycle;
-        const matchesClass = !d.whitelistJobClasses || d.whitelistJobClasses.length === 0 || d.whitelistJobClasses.includes(getMemberJobClass(m));
-        const matchesMember = !d.whitelistMemberIds || d.whitelistMemberIds.length === 0 || d.whitelistMemberIds.includes(m.id);
-        return isParticipant && hasNotReceived && matchesClass && matchesMember;
-      }).length;
-
-      // Rule: If remaining items is greater than clean participants, we allow those who already received items in this cycle to participate
-      const allowAlreadyReceived = unassignedDropsCount > cleanParticipantsCount;
-
-      // Filter to find eligible participants
-      let eligibleParticipants = tempMembers.filter(m => {
-        const isParticipant = eventParticipantIds.includes(m.id);
-        const hasNotReceived = !m.hasReceivedInCycle;
-        const matchesClass = !d.whitelistJobClasses || d.whitelistJobClasses.length === 0 || d.whitelistJobClasses.includes(getMemberJobClass(m));
-        const matchesMember = !d.whitelistMemberIds || d.whitelistMemberIds.length === 0 || d.whitelistMemberIds.includes(m.id);
-        return isParticipant && (hasNotReceived || allowAlreadyReceived) && matchesClass && matchesMember;
-      });
-
-      // What if all whitelisted participants of this event have already received items? (fallback fallback)
-      if (eligibleParticipants.length === 0) {
-        // Reset hasReceivedInCycle for whitelisted event participants to continue fairly
-        tempMembers = tempMembers.map(m => {
-          if (eventParticipantIds.includes(m.id)) {
-            const matchesClass = !d.whitelistJobClasses || d.whitelistJobClasses.length === 0 || d.whitelistJobClasses.includes(getMemberJobClass(m));
-            const matchesMember = !d.whitelistMemberIds || d.whitelistMemberIds.length === 0 || d.whitelistMemberIds.includes(m.id);
-            if (matchesClass && matchesMember) {
-              return { ...m, hasReceivedInCycle: false };
-            }
-          }
-          return m;
-        });
-        eligibleParticipants = tempMembers.filter(m => {
-          const isParticipant = eventParticipantIds.includes(m.id);
-          const hasNotReceived = !m.hasReceivedInCycle;
-          const matchesClass = !d.whitelistJobClasses || d.whitelistJobClasses.length === 0 || d.whitelistJobClasses.includes(getMemberJobClass(m));
-          const matchesMember = !d.whitelistMemberIds || d.whitelistMemberIds.length === 0 || d.whitelistMemberIds.includes(m.id);
-          return isParticipant && hasNotReceived && matchesClass && matchesMember;
-        });
+    for (let d of originalDrops) {
+      if (d.assignedToMemberId) {
+        finalDrops.push(d);
+        continue; // Skip already assigned drops
       }
 
-      // If still no match, allow any whitelisted participant who is present in this event
-      if (eligibleParticipants.length === 0) {
-        eligibleParticipants = tempMembers.filter(m => {
+      if (shouldAverageDrop(d.itemName)) {
+        // Find participants of this event matching whitelist
+        const eventParticipantIds = event.participants;
+        const eligibleParticipants = tempMembers.filter(m => {
           const isParticipant = eventParticipantIds.includes(m.id);
           const matchesClass = !d.whitelistJobClasses || d.whitelistJobClasses.length === 0 || d.whitelistJobClasses.includes(getMemberJobClass(m));
           const matchesMember = !d.whitelistMemberIds || d.whitelistMemberIds.length === 0 || d.whitelistMemberIds.includes(m.id);
           return isParticipant && matchesClass && matchesMember;
         });
-      }
 
-      // Absolute fallback: pick any participant who hasn't received anything in this cycle
-      if (eligibleParticipants.length === 0) {
-        eligibleParticipants = tempMembers.filter(m => 
-          eventParticipantIds.includes(m.id) && !m.hasReceivedInCycle
-        );
-      }
+        const targets = eligibleParticipants.length > 0 
+          ? eligibleParticipants 
+          : tempMembers.filter(m => eventParticipantIds.includes(m.id));
 
-      if (eligibleParticipants.length > 0) {
-        // Sort:
-        // 1. Those who have NOT received yet in this cycle come first
-        // 2. High war participation count descending
-        eligibleParticipants.sort((a, b) => {
-          if (a.hasReceivedInCycle !== b.hasReceivedInCycle) {
-            return a.hasReceivedInCycle ? 1 : -1;
-          }
-          return b.participatedWarsCount - a.participatedWarsCount;
+        if (targets.length > 0) {
+          const quantities = distributeEvenly(d.quantity, targets.length);
+          targets.forEach((participant, idx) => {
+            const qty = quantities[idx];
+            if (qty > 0) {
+              const splitDropId = `drop-split-${d.id}-${participant.id}`;
+              finalDrops.push({
+                ...d,
+                id: splitDropId,
+                quantity: qty,
+                assignedToMemberId: participant.id,
+                assignedToMemberName: participant.name,
+                bidAmount: 5000 // default initial/average bid
+              });
+            }
+          });
+          changed = true;
+        } else {
+          finalDrops.push(d);
+        }
+      } else {
+        // Normal drop logic
+        // Find participants of this event
+        const eventParticipantIds = event.participants;
+
+        // Count unassigned drops
+        const unassignedDropsCount = originalDrops.filter(dr => !dr.assignedToMemberId).length;
+
+        // Count clean participants (participants who haven't received items in this cycle and match filters)
+        const cleanParticipantsCount = tempMembers.filter(m => {
+          const isParticipant = eventParticipantIds.includes(m.id);
+          const hasNotReceived = !m.hasReceivedInCycle;
+          const matchesClass = !d.whitelistJobClasses || d.whitelistJobClasses.length === 0 || d.whitelistJobClasses.includes(getMemberJobClass(m));
+          const matchesMember = !d.whitelistMemberIds || d.whitelistMemberIds.length === 0 || d.whitelistMemberIds.includes(m.id);
+          return isParticipant && hasNotReceived && matchesClass && matchesMember;
+        }).length;
+
+        // Rule: If remaining items is greater than clean participants, we allow those who already received items in this cycle to participate
+        const allowAlreadyReceived = unassignedDropsCount > cleanParticipantsCount;
+
+        // Filter to find eligible participants
+        let eligibleParticipants = tempMembers.filter(m => {
+          const isParticipant = eventParticipantIds.includes(m.id);
+          const hasNotReceived = !m.hasReceivedInCycle;
+          const matchesClass = !d.whitelistJobClasses || d.whitelistJobClasses.length === 0 || d.whitelistJobClasses.includes(getMemberJobClass(m));
+          const matchesMember = !d.whitelistMemberIds || d.whitelistMemberIds.length === 0 || d.whitelistMemberIds.includes(m.id);
+          return isParticipant && (hasNotReceived || allowAlreadyReceived) && matchesClass && matchesMember;
         });
-        const selectedWinner = eligibleParticipants[0];
 
-        // Assign drop
-        d.assignedToMemberId = selectedWinner.id;
-        d.assignedToMemberName = selectedWinner.name;
-        d.bidAmount = 5000; // default initial/average bid
+        // What if all whitelisted participants of this event have already received items? (fallback fallback)
+        if (eligibleParticipants.length === 0) {
+          // Reset hasReceivedInCycle for whitelisted event participants to continue fairly
+          tempMembers = tempMembers.map(m => {
+            if (eventParticipantIds.includes(m.id)) {
+              const matchesClass = !d.whitelistJobClasses || d.whitelistJobClasses.length === 0 || d.whitelistJobClasses.includes(getMemberJobClass(m));
+              const matchesMember = !d.whitelistMemberIds || d.whitelistMemberIds.length === 0 || d.whitelistMemberIds.includes(m.id);
+              if (matchesClass && matchesMember) {
+                return { ...m, hasReceivedInCycle: false };
+              }
+            }
+            return m;
+          });
+          eligibleParticipants = tempMembers.filter(m => {
+            const isParticipant = eventParticipantIds.includes(m.id);
+            const hasNotReceived = !m.hasReceivedInCycle;
+            const matchesClass = !d.whitelistJobClasses || d.whitelistJobClasses.length === 0 || d.whitelistJobClasses.includes(getMemberJobClass(m));
+            const matchesMember = !d.whitelistMemberIds || d.whitelistMemberIds.length === 0 || d.whitelistMemberIds.includes(m.id);
+            return isParticipant && hasNotReceived && matchesClass && matchesMember;
+          });
+        }
 
-        // Mark them as having received an item in this cycle
-        tempMembers = tempMembers.map(m => m.id === selectedWinner.id ? { ...m, hasReceivedInCycle: true } : m);
-        changed = true;
+        // If still no match, allow any whitelisted participant who is present in this event
+        if (eligibleParticipants.length === 0) {
+          eligibleParticipants = tempMembers.filter(m => {
+            const isParticipant = eventParticipantIds.includes(m.id);
+            const matchesClass = !d.whitelistJobClasses || d.whitelistJobClasses.length === 0 || d.whitelistJobClasses.includes(getMemberJobClass(m));
+            const matchesMember = !d.whitelistMemberIds || d.whitelistMemberIds.length === 0 || d.whitelistMemberIds.includes(m.id);
+            return isParticipant && matchesClass && matchesMember;
+          });
+        }
+
+        // Absolute fallback: pick any participant who hasn't received anything in this cycle
+        if (eligibleParticipants.length === 0) {
+          eligibleParticipants = tempMembers.filter(m => 
+            eventParticipantIds.includes(m.id) && !m.hasReceivedInCycle
+          );
+        }
+
+        if (eligibleParticipants.length > 0) {
+          // Sort:
+          // 1. Those who have NOT received yet in this cycle come first
+          // 2. High war participation count descending
+          eligibleParticipants.sort((a, b) => {
+            if (a.hasReceivedInCycle !== b.hasReceivedInCycle) {
+              return a.hasReceivedInCycle ? 1 : -1;
+            }
+            return b.participatedWarsCount - a.participatedWarsCount;
+          });
+          const selectedWinner = eligibleParticipants[0];
+
+          // Assign drop
+          d.assignedToMemberId = selectedWinner.id;
+          d.assignedToMemberName = selectedWinner.name;
+          d.bidAmount = 5000; // default initial/average bid
+
+          // Mark them as having received an item in this cycle
+          tempMembers = tempMembers.map(m => m.id === selectedWinner.id ? { ...m, hasReceivedInCycle: true } : m);
+          
+          finalDrops.push(d);
+          changed = true;
+        } else {
+          finalDrops.push(d);
+        }
       }
     }
 
@@ -713,7 +773,7 @@ export default function Auctions({
         tempMembers = tempMembers.map(m => ({ ...m, hasReceivedInCycle: false }));
       }
 
-      const updatedEvents = events.map(e => e.id === eventId ? { ...e, drops: updatedDrops } : e);
+      const updatedEvents = events.map(e => e.id === eventId ? { ...e, drops: finalDrops } : e);
 
       onUpdateState({
         ...state,
@@ -728,6 +788,12 @@ export default function Auctions({
     const event = events.find(e => e.id === eventId);
     if (!event) return;
 
+    // Helper to check if a drop is a material/fragment
+    const shouldAverageDrop = (itemName: string) => {
+      const name = itemName.toLowerCase();
+      return name.includes('เศษสมุด') || name.includes('ขนนก') || name.includes('feather') || name.includes('fragment');
+    };
+
     // Helper to perform the actual saving & state updating
     const executeCompletion = () => {
       // Mark event as completed
@@ -741,14 +807,25 @@ export default function Auctions({
       // We must permanently lock the winners' cycle status as 'true' for those who got items!
       // Let's gather winners of this event
       let updatedMembers = [...members];
+      
+      // To avoid multiple increments of participatedWarsCount for members getting multiple drops,
+      // we track who got incremented.
+      const incrementedMembers = new Set<string>();
+
       event.drops.forEach(d => {
         if (d.assignedToMemberId) {
+          const isFeatherOrBook = shouldAverageDrop(d.itemName);
           updatedMembers = updatedMembers.map(m => {
             if (m.id === d.assignedToMemberId) {
+              const alreadyIncremented = incrementedMembers.has(m.id);
+              if (!alreadyIncremented) {
+                incrementedMembers.add(m.id);
+              }
               return { 
                 ...m, 
-                hasReceivedInCycle: true,
-                participatedWarsCount: m.participatedWarsCount + 1 
+                // Only mark hasReceivedInCycle if the drop is NOT a feather/book fragment
+                hasReceivedInCycle: isFeatherOrBook ? m.hasReceivedInCycle : true,
+                participatedWarsCount: m.participatedWarsCount + (alreadyIncremented ? 0 : 1)
               };
             }
             return m;
