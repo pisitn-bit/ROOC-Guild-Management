@@ -216,7 +216,8 @@ export default function SpinWheel({
               assignedToMemberName: null,
               bidAmount: 0,
               isSplit: false,
-              originalDropId: undefined
+              originalDropId: undefined,
+              cycle: undefined
             });
           }
         });
@@ -759,7 +760,8 @@ export default function SpinWheel({
                     ...d,
                     assignedToMemberId: wheelWinner.id,
                     assignedToMemberName: wheelWinner.name,
-                    originalQuantity: d.originalQuantity || d.quantity
+                    originalQuantity: d.originalQuantity || d.quantity,
+                    cycle: state.currentCycle || 1
                   });
                 } else {
                   // Split it!
@@ -771,7 +773,8 @@ export default function SpinWheel({
                     assignedToMemberName: wheelWinner.name,
                     originalDropId: d.originalDropId || d.id,
                     isSplit: true,
-                    originalQuantity: d.originalQuantity || d.quantity
+                    originalQuantity: d.originalQuantity || d.quantity,
+                    cycle: state.currentCycle || 1
                   });
                   newDrops.push({
                     ...d,

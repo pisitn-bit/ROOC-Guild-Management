@@ -174,14 +174,50 @@ export default function App() {
 
   // 2. State Mutation and Syncing Function
   const updateState = async (newState: GuildState) => {
+    const syncedState = { ...newState };
+    
+    // Ensure currentCycle is initialized
+    if (syncedState.currentCycle === undefined || syncedState.currentCycle === null) {
+      syncedState.currentCycle = 1;
+    }
+    
+    // 1. Gather all member IDs who have received an item in the current cycle
+    const receivedIds = new Set<string>();
+    syncedState.events?.forEach(e => {
+      e.drops?.forEach(d => {
+        if (d.assignedToMemberId && d.cycle === syncedState.currentCycle) {
+          receivedIds.add(d.assignedToMemberId);
+        }
+      });
+    });
+    
+    // 2. Map members to update hasReceivedInCycle based on receivedIds and their current status
+    syncedState.members = syncedState.members.map(m => {
+      const hasReceived = receivedIds.has(m.id) || m.hasReceivedInCycle;
+      if (m.hasReceivedInCycle !== hasReceived) {
+        return { ...m, hasReceivedInCycle: hasReceived };
+      }
+      return m;
+    });
+    
+    // 3. Check if all members have received items in the current cycle
+    const totalCount = syncedState.members.length;
+    const receivedCount = syncedState.members.filter(m => m.hasReceivedInCycle).length;
+    
+    if (totalCount > 0 && receivedCount === totalCount) {
+      // Cycle complete! Increment cycle and reset members
+      syncedState.currentCycle += 1;
+      syncedState.members = syncedState.members.map(m => ({ ...m, hasReceivedInCycle: false }));
+    }
+
     // Update react state
-    setState(newState);
+    setState(syncedState);
     // Cache to local storage immediately (guarantees offline persistence!)
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newState));
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(syncedState));
 
     // Update session user state if they changed their own profile details
     if (currentUser) {
-      const refreshedUser = newState.members.find(m => m.id === currentUser.id);
+      const refreshedUser = syncedState.members.find(m => m.id === currentUser.id);
       if (refreshedUser) {
         setCurrentUser(refreshedUser);
         localStorage.setItem(USER_SESSION_KEY, JSON.stringify(refreshedUser));

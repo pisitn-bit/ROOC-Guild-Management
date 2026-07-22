@@ -557,7 +557,8 @@ export default function Auctions({
             return {
               ...d,
               assignedToMemberId: memberId,
-              assignedToMemberName: member ? member.name : null
+              assignedToMemberName: member ? member.name : null,
+              cycle: memberId ? (state.currentCycle || 1) : undefined
             };
           }
           return d;

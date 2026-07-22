@@ -28,6 +28,7 @@ export interface EventDrop {
   originalDropId?: string; // ไอดีไอเทมดั้งเดิมก่อนแบ่งเฉลี่ย
   isSplit?: boolean; // ระบุว่าเป็นไอเทมที่ถูกเฉลี่ยแบ่งมาจากชิ้นใหญ่
   originalQuantity?: number; // จำนวนดั้งเดิมก่อนการแบ่ง
+  cycle?: number; // รอบวัฏจักรที่ได้รับรางวัลนี้
 }
 
 export interface EventExcuse {
@@ -87,6 +88,7 @@ export interface GuildState {
   guildGuidelines?: string; // กฎเกณฑ์และข้อตกลงกิลด์
   lastUpdated: string;
   jobClasses?: string[]; // รายชื่ออาชีพกำหนดเองสำหรับกิลด์
+  currentCycle?: number; // รอบวัฏจักรประมูลปัจจุบัน
 }
 
 export const DEFAULT_JOB_CLASSES = [

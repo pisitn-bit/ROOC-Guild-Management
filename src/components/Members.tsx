@@ -190,14 +190,13 @@ export default function Members({ state, currentUser, isAdmin, onUpdateState, sh
       'ยืนยันการรีเซ็ตสิทธิ์',
       'คุณแน่ใจหรือไม่ว่าต้องการรีเซ็ตสิทธิ์การรับไอเทมของสมาชิกทุกคนกลับมา "ยังมีสิทธิ์" ทั้งหมด เพื่อเริ่มต้นรอบใหม่?',
       () => {
-        const updatedMembers = state.members.map(m => ({
-          ...m,
-          hasReceivedInCycle: false
-        }));
-
         onUpdateState({
           ...state,
-          members: updatedMembers
+          currentCycle: (state.currentCycle || 1) + 1,
+          members: state.members.map(m => ({
+            ...m,
+            hasReceivedInCycle: false
+          }))
         });
       }
     );
